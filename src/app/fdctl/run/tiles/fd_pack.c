@@ -482,7 +482,9 @@ during_frag( void * _ctx,
     if( FD_UNLIKELY( chunk<ctx->in[ in_idx ].chunk0 || chunk>ctx->in[ in_idx ].wmark || sz!=sizeof(fd_became_leader_t) ) )
       FD_LOG_ERR(( "chunk %lu %lu corrupt, not in range [%lu,%lu]", chunk, sz, ctx->in[ in_idx ].chunk0, ctx->in[ in_idx ].wmark ));
 
-    FD_TEST( ctx->leader_slot==ULONG_MAX );
+    if( ctx->leader_slot!=ULONG_MAX ) {
+      FD_LOG_ERR(( "pack already leader - leader_slot: %lu", ctx->leader_slot ));
+    }
     ctx->leader_slot = fd_disco_poh_sig_slot( sig );
 
     fd_became_leader_t * became_leader = (fd_became_leader_t *)dcache_entry;

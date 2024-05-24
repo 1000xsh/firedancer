@@ -293,9 +293,6 @@ fd_store_tile_slot_prepare( fd_store_tile_ctx_t * ctx,
   }
 
   if( store_slot_prepare_mode == FD_STORE_SLOT_PREPARE_CONTINUE ) {
-
-    ulong tspub = fd_frag_meta_ts_comp( fd_tickcount() );
-    ulong replay_sig = fd_disco_replay_sig( slot, REPLAY_FLAG_FINALIZE_BLOCK );
     uchar * out_buf = fd_chunk_to_laddr( ctx->replay_out_mem, ctx->replay_out_chunk );
 
     fd_block_t * block = fd_blockstore_block_query( ctx->blockstore, slot );
@@ -336,6 +333,9 @@ fd_store_tile_slot_prepare( fd_store_tile_ctx_t * ctx,
       fd_txn_p_t * txns = fd_type_pun( out_buf );
       ulong txn_cnt = fd_runtime_block_collect_txns( &block_info, txns );
 
+      ulong tspub = fd_frag_meta_ts_comp( fd_tickcount() );
+      int caught_up_flag = (ctx->store->curr_turbine_slot - slot)==0 ? 0 : REPLAY_FLAG_CATCHING_UP;
+      ulong replay_sig = fd_disco_replay_sig( slot, REPLAY_FLAG_FINISHED_BLOCK | caught_up_flag );
       ulong out_sz = sizeof(ulong) + sizeof(fd_hash_t) + ( txn_cnt * sizeof(fd_txn_p_t) );
       fd_mcache_publish( ctx->replay_out_mcache, ctx->replay_out_depth, ctx->replay_out_seq, replay_sig, ctx->replay_out_chunk, txn_cnt, 0UL, tsorig, tspub );
       ctx->replay_out_seq   = fd_seq_inc( ctx->replay_out_seq, 1UL );

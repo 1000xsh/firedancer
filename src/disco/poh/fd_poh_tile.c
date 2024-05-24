@@ -280,7 +280,7 @@ fd_poh_tile_reset( fd_poh_tile_ctx_t * ctx,
 
    if( FD_UNLIKELY( ctx->current_leader_slot != FD_SLOT_NULL ) ) {
    /* If we notified the banking stage that we were leader for a slot,
-      it's already sending microblocks which we won't be able to tell
+      it's already sending fdcroblocks which we won't be able to tell
       which fork of the slot they are for, so we can't become leader
       again for that slot.  This will cause the in-flight microblocks
       to be dropped. */
@@ -573,10 +573,13 @@ fd_poh_tile_is_no_longer_leader( fd_poh_tile_ctx_t * ctx,
                                  int                 is_leader ) {
   /* We ticked while leader and are no longer leader... transition
     the state machine. */
-  ulong max_remaining_microblocks = ctx->max_microblocks_per_slot - ctx->microblocks_lower_bound;
-  FD_TEST( !max_remaining_microblocks );
-
-  return is_leader && ctx->hashcnt>=(ctx->next_leader_slot_hashcnt+ctx->hashcnt_per_slot);
+  if( is_leader && ctx->hashcnt>=(ctx->next_leader_slot_hashcnt+ctx->hashcnt_per_slot) ) {
+    ulong max_remaining_microblocks = ctx->max_microblocks_per_slot - ctx->microblocks_lower_bound;
+    FD_TEST( !max_remaining_microblocks );
+    return 1;
+  } else {
+    return 0;
+  }
 }
 
 int
@@ -721,10 +724,10 @@ fd_poh_tile_stake_update( fd_poh_tile_ctx_t * ctx ) {
     the only one possible should be into leader. */
   ulong next_leader_slot_hashcnt_after_frag = fd_poh_tile_next_leader_slot_hashcnt( ctx );
 
-  int currently_leader = ctx->hashcnt>=ctx->next_leader_slot_hashcnt;
-  int leader_after_frag = ctx->hashcnt>=next_leader_slot_hashcnt_after_frag;
+  int currently_leader = fd_poh_tile_is_leader( ctx );
+  int leader_after_frag = next_leader_slot_hashcnt_after_frag!=ULONG_MAX && ctx->hashcnt>=next_leader_slot_hashcnt_after_frag;
 
-  FD_LOG_INFO(( "stake_update(before_leader=%lu,after_leader=%lu)",
+  FD_LOG_INFO(( "stake_update(current_slot,before_leader=%lu,after_leader=%lu)",
                 ctx->next_leader_slot_hashcnt/ctx->hashcnt_per_slot,
                 next_leader_slot_hashcnt_after_frag/ctx->hashcnt_per_slot ));
 

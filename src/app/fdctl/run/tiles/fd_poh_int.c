@@ -202,6 +202,17 @@ after_credit( void *             _ctx,
     return;
   }
 
+  if( FD_LIKELY( ctx->poh_tile_ctx->current_leader_slot==ULONG_MAX ) ) {
+    /* We are not leader, but we should check if we have reached a leader slot! */
+    ulong leader_slot = FD_SLOT_NULL;
+    ulong reset_slot = FD_SLOT_NULL;
+    int has_reached_leader_slot = fd_poh_tile_reached_leader_slot( ctx->poh_tile_ctx, &leader_slot, &reset_slot );
+
+    if( has_reached_leader_slot ) {
+      fd_poh_begin_leader( ctx, leader_slot );
+    }
+  }
+
   int is_leader       = fd_poh_tile_is_leader( ctx->poh_tile_ctx );
   int hashes_produced = fd_poh_tile_do_hashing( ctx->poh_tile_ctx, is_leader );
   
@@ -312,10 +323,17 @@ during_frag( void * _ctx,
     if( FD_UNLIKELY( chunk<ctx->bank_in[ in_idx ].chunk0 || chunk>ctx->bank_in[ in_idx ].wmark || sz>USHORT_MAX ) )
       FD_LOG_ERR(( "chunk %lu %lu corrupt, not in range [%lu,%lu]", chunk, sz, ctx->bank_in[ in_idx ].chunk0, ctx->bank_in[ in_idx ].wmark ));
 
+    if( !ctx->is_initialized && fd_disco_replay_sig_flags( sig )==REPLAY_FLAG_INIT ) {
+      fd_poh_init_msg_t * init_msg = (fd_poh_init_msg_t *)fd_chunk_to_laddr( ctx->bank_in[ in_idx ].mem, chunk );
+      fd_poh_initialize( ctx, init_msg->hashcnt_duration_ns, init_msg->hashcnt_per_tick, init_msg->ticks_per_slot, init_msg->tick_height, init_msg->last_entry_hash);
+      *opt_filter = 1;
+      return;
+    }
     uchar * src = (uchar *)fd_chunk_to_laddr( ctx->bank_in[ in_idx ].mem, chunk );
 
-    fd_memcpy( ctx->_txns, src, sz-sizeof(fd_microblock_trailer_t) );
-    ctx->_microblock_trailer = (fd_microblock_trailer_t*)(src+sz-sizeof(fd_microblock_trailer_t));
+    ulong raw_sz = (sz * sizeof(fd_txn_p_t))+sizeof(fd_microblock_trailer_t);
+    fd_memcpy( ctx->_txns, src, raw_sz-sizeof(fd_microblock_trailer_t) );
+    ctx->_microblock_trailer = (fd_microblock_trailer_t*)(src+raw_sz-sizeof(fd_microblock_trailer_t));
   }
 }
 
@@ -339,8 +357,9 @@ after_frag( void *             _ctx,
 
   if( FD_UNLIKELY( in_idx==ctx->stake_in_idx ) ) {
     fd_stake_ci_stake_msg_fini( ctx->poh_tile_ctx->stake_ci );
-    fd_poh_tile_stake_update( ctx->poh_tile_ctx );
-
+    if( ctx->is_initialized ) {
+      fd_poh_tile_stake_update( ctx->poh_tile_ctx );
+    }
     /* Nothing to do if we transition into being leader, since it
        will just get picked up by the regular tick loop. */
     return;
@@ -351,46 +370,57 @@ after_frag( void *             _ctx,
     fd_histf_sample( ctx->poh_tile_ctx->first_microblock_delay, (ulong)((double)(fd_log_wallclock()-ctx->poh_tile_ctx->reset_slot_start_ns)/tick_per_ns) );
   }
 
-  ulong target_slot = fd_disco_poh_sig_slot( *opt_sig );
+  ulong target_flags = fd_disco_replay_sig_flags( *opt_sig );
+  ulong target_slot = fd_disco_replay_sig_slot( *opt_sig );
 
-  ulong current_slot = fd_poh_tile_get_slot( ctx->poh_tile_ctx );
-  ulong leader_slot = fd_poh_tile_get_next_leader_slot( ctx->poh_tile_ctx );
-  if( FD_UNLIKELY( target_slot!=leader_slot || target_slot!=current_slot ) )
-    FD_LOG_ERR(( "packed too early or late target_slot=%lu, current_slot=%lu", target_slot, current_slot ));
+  ulong is_packed_microblock = target_flags & REPLAY_FLAG_PACKED_MICROBLOCK;
+  ulong is_finalized_block = target_flags & REPLAY_FLAG_FINISHED_BLOCK;
+  ulong is_catching_up = target_flags & REPLAY_FLAG_CATCHING_UP;
 
-  FD_TEST( ctx->poh_tile_ctx->current_leader_slot!=FD_SLOT_NULL );
-  FD_TEST( ctx->poh_tile_ctx->microblocks_lower_bound<ctx->poh_tile_ctx->max_microblocks_per_slot );
-  ctx->poh_tile_ctx->microblocks_lower_bound += 1UL;
+  if( is_packed_microblock ) {
+    ulong current_slot = fd_poh_tile_get_slot( ctx->poh_tile_ctx );
+    ulong leader_slot = fd_poh_tile_get_next_leader_slot( ctx->poh_tile_ctx );
+    if( FD_UNLIKELY( target_slot!=leader_slot || target_slot!=current_slot ) )
+      FD_LOG_ERR(( "packed too early or late target_slot=%lu, current_slot=%lu", target_slot, current_slot ));
 
-  ulong txn_cnt = (*opt_sz-sizeof(fd_microblock_trailer_t))/sizeof(fd_txn_p_t);
-  fd_txn_p_t * txns = (fd_txn_p_t *)(ctx->_txns);
-  ulong executed_txn_cnt = 0UL;
-  for( ulong i=0; i<txn_cnt; i++ ) { executed_txn_cnt += !!(txns[ i ].flags & FD_TXN_P_FLAGS_EXECUTE_SUCCESS); }
+    FD_TEST( ctx->poh_tile_ctx->current_leader_slot!=FD_SLOT_NULL );
+    FD_TEST( ctx->poh_tile_ctx->microblocks_lower_bound<ctx->poh_tile_ctx->max_microblocks_per_slot );
+    ctx->poh_tile_ctx->microblocks_lower_bound += 1UL;
 
-  /* We don't publish transactions that fail to execute.  If all the
-     transctions failed to execute, the microblock would be empty, causing
-     solana labs to think it's a tick and complain.  Instead we just skip
-     the microblock and don't hash or update the hashcnt. */
-  if( FD_UNLIKELY( !executed_txn_cnt ) ) return;
+    ulong txn_cnt = (*opt_sz-sizeof(fd_microblock_trailer_t))/sizeof(fd_txn_p_t);
+    fd_txn_p_t * txns = (fd_txn_p_t *)(ctx->_txns);
+    ulong executed_txn_cnt = 0UL;
+    for( ulong i=0; i<txn_cnt; i++ ) { executed_txn_cnt += !!(txns[ i ].flags & FD_TXN_P_FLAGS_EXECUTE_SUCCESS); }
 
-  ulong hashcnt_delta = fd_poh_tile_mixin( ctx->poh_tile_ctx, ctx->_microblock_trailer->hash );
+    /* We don't publish transactions that fail to execute.  If all the
+      transctions failed to execute, the microblock would be empty, causing
+      solana labs to think it's a tick and complain.  Instead we just skip
+      the microblock and don't hash or update the hashcnt. */
+    if( FD_UNLIKELY( !executed_txn_cnt ) ) return;
 
-  /* The hashing loop above will never leave us exactly one away from
-     crossing a tick boundary, so this increment will never cause the
-     current tick (or the slot) to change, except in low power mode
-     for development, in which case we do need to register the tick
-     with the leader bank.  We don't need to publish the tick since
-     sending the microblock below is the publishing action. */
-  if( FD_UNLIKELY( fd_poh_tile_is_at_tick_boundary( ctx->poh_tile_ctx ) ) ) {
-    fd_poh_register_tick( ctx, ctx->poh_tile_ctx->reset_slot_hashcnt, ctx->poh_tile_ctx->hash );
-    if( FD_UNLIKELY( fd_poh_tile_is_no_longer_leader_simple( ctx->poh_tile_ctx ) ) ) {
-      /* We ticked while leader and are no longer leader... transition
-         the state machine. */
-      no_longer_leader( ctx );
+    ulong hashcnt_delta = fd_poh_tile_mixin( ctx->poh_tile_ctx, ctx->_microblock_trailer->hash );
+
+    /* The hashing loop above will never leave us exactly one away from
+      crossing a tick boundary, so this increment will never cause the
+      current tick (or the slot) to change, except in low power mode
+      for development, in which case we do need to register the tick
+      with the leader bank.  We don't need to publish the tick since
+      sending the microblock below is the publishing action. */
+    if( FD_UNLIKELY( fd_poh_tile_is_at_tick_boundary( ctx->poh_tile_ctx ) ) ) {
+      fd_poh_register_tick( ctx, ctx->poh_tile_ctx->reset_slot_hashcnt, ctx->poh_tile_ctx->hash );
+      if( FD_UNLIKELY( fd_poh_tile_is_no_longer_leader_simple( ctx->poh_tile_ctx ) ) ) {
+        /* We ticked while leader and are no longer leader... transition
+          the state machine. */
+        no_longer_leader( ctx );
+      }
+    }
+
+    fd_poh_tile_publish_microblock( ctx->poh_tile_ctx, mux, *opt_sig, target_slot, hashcnt_delta, (fd_txn_p_t *)ctx->_txns, txn_cnt );
+  } else {
+     if( is_finalized_block && !is_catching_up && ctx->is_initialized ) {
+      fd_poh_reset( ctx, target_slot, ctx->_microblock_trailer->hash );
     }
   }
-
-  fd_poh_tile_publish_microblock( ctx->poh_tile_ctx, mux, *opt_sig, target_slot, hashcnt_delta, (fd_txn_p_t *)ctx->_txns, txn_cnt );
 }
 
 static void

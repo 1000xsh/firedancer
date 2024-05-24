@@ -52,6 +52,8 @@ fd_stake_ci_stake_msg_init( fd_stake_ci_t * info,
   ulong start_slot          = hdr[ 2 ];
   ulong slot_cnt            = hdr[ 3 ];
 
+  FD_LOG_INFO(( "stake init - epoch: %lu", epoch ));
+
   if( FD_UNLIKELY( staked_cnt > MAX_SHRED_DESTS ) )
     FD_LOG_ERR(( "The stakes -> Firedancer splice sent a malformed update with %lu stakes in it,"
                  " but the maximum allowed is %lu", staked_cnt, MAX_SHRED_DESTS ));
