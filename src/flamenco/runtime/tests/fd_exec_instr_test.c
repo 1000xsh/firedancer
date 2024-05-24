@@ -906,6 +906,9 @@ fd_sbpf_program_load_test_run( fd_exec_test_elf_loader_ctx_t const * input,
   }
   fd_memset( elf_effects, 0, sizeof(fd_exec_test_elf_loader_effects_t) );
 
+  /* wrap the loader code in do-while(0) block so that we can exit 
+     immediately if execution fails at any point */
+     
   do{
 
     if( FD_UNLIKELY( !fd_sbpf_elf_peek( &info, _bin, elf_sz ) ) ) {
@@ -920,6 +923,7 @@ fd_sbpf_program_load_test_run( fd_exec_test_elf_loader_ctx_t const * input,
     FD_TEST( prog );
 
     fd_sbpf_syscalls_t * syscalls = fd_sbpf_syscalls_new( fd_valloc_malloc( valloc, fd_sbpf_syscalls_align(), fd_sbpf_syscalls_footprint() ));
+    FD_TEST( syscalls );
 
     fd_vm_syscall_register_all( syscalls );
 
