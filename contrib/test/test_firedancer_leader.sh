@@ -54,7 +54,7 @@ echo "
         funk_txn_max = 1024
 [log]
     path = \"fddev.log\"
-    level_stderr = \"NOTICE\"
+    level_stderr = \"INFO\"
 [development]
     topology = \"firedancer\"
 [consensus]

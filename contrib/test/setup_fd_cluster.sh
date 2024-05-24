@@ -30,7 +30,7 @@ GENESIS_OUTPUT=$(solana-genesis \
     --bootstrap-validator-lamports 11000000000000000 \
     --bootstrap-validator-stake-lamports 10000000000000000 \
     --faucet-pubkey test-ledger/faucet-keypair.json --faucet-lamports 10000000000000000 \
-    --slots-per-epoch 200 \
+    --slots-per-epoch 1000 \
     --hashes-per-tick 1000 \
     --ticks-per-slot 64)
 
