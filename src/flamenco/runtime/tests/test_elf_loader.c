@@ -1,3 +1,8 @@
+/* 
+  Run test fixtures for the elf loader. The executable takes in a list of ELFLoaderFixture 
+  message files, executes them and compares the effects with the expected output contained
+  in the fixture.
+*/
 #include "../../../util/fd_util.h"
 #include "fd_exec_test.pb.h"
 #include "fd_exec_instr_test.h"
@@ -13,14 +18,31 @@ diff_effects( fd_exec_test_elf_loader_effects_t const * expected,
               fd_exec_test_elf_loader_effects_t const * actual ) {
   int diff = 0;
   // TODO: Report differences at the field level
-  if( expected->rodata_sz != actual->rodata_sz ) diff = 1;
-  if( expected->text_cnt == actual->text_cnt ) diff = 1;
-  if( expected->entry_pc == actual->entry_pc ) diff = 1;
-  if( expected->calldests_count == actual->calldests_count ) diff = 1;
-  if( memcmp( expected->calldests, actual->calldests, expected->calldests_count*sizeof(ulong) ) == 0 )
+  if( expected->rodata_sz != actual->rodata_sz ) {
     diff = 1;
-  if( memcmp( expected->rodata, actual->rodata, expected->rodata_sz ) == 0 )
+    FD_LOG_WARNING(( "ro data size: expected %lu, actual %lu", expected->rodata_sz, actual->rodata_sz ));
+  };
+  if( expected->text_cnt == actual->text_cnt ) {
     diff = 1;
+    FD_LOG_WARNING(( "Instruction count: expected %lu, actual %lu", expected->text_cnt, actual->text_cnt ));
+  }
+  if( expected->entry_pc == actual->entry_pc ) {
+    diff = 1;
+    FD_LOG_WARNING(( "Entry PC: expected %lu, actual %lu", expected->entry_pc, actual->entry_pc ));
+  }
+  if( expected->calldests_count == actual->calldests_count ) {
+    diff = 1;
+    FD_LOG_WARNING(( "calldests count: expected %d, actual %d", expected->calldests_count, actual->calldests_count ));
+  }
+  if( memcmp( expected->calldests, actual->calldests, expected->calldests_count*sizeof(ulong) ) == 0 ){
+    diff = 1;
+    FD_LOG_WARNING(( "calldests differ" ));
+  }
+    
+  if( memcmp( expected->rodata, actual->rodata, expected->rodata_sz ) == 0 ){
+    diff = 1;
+    FD_LOG_WARNING(( "rodata differ" ));
+  }
   
   return diff;
 }
@@ -66,6 +88,9 @@ run_test( char const * path ) {
     }
     /* Compare effects */
     diff = diff_effects( &fixture->output, output );
+    if( diff ) {
+      FD_LOG_WARNING(( "Effects differ for fixture %s", path ));
+    }
 
   } while(0);
 
