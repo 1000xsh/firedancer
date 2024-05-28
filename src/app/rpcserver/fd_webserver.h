@@ -30,8 +30,15 @@ void fd_webserver_method_generic(struct fd_web_replier* replier, struct json_val
 fd_textstream_t * fd_web_replier_textstream(struct fd_web_replier* replier);
 void fd_web_replier_done(struct fd_web_replier* replier);
 
+typedef struct fd_websocket_ctx fd_websocket_ctx_t;
+int fd_webserver_ws_subscribe(struct json_values* values, fd_websocket_ctx_t * ctx);
+
 void fd_web_replier_error( struct fd_web_replier* replier, const char* format, ... )
   __attribute__ ((format (printf, 2, 3)));
 void fd_web_replier_simple_error( struct fd_web_replier* replier, const char* text, uint text_size);
+
+void fd_web_ws_error( fd_websocket_ctx_t * ctx, const char* format, ... )
+  __attribute__ ((format (printf, 2, 3)));
+void fd_web_ws_simple_error( fd_websocket_ctx_t * ctx, const char* text, uint text_size);
 
 #endif /* HEADER_fd_src_tango_webserver_fd_webserver_h */

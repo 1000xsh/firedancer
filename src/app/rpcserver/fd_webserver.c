@@ -19,7 +19,6 @@ struct fd_websocket_ctx {
   MHD_socket sock;
   fd_webserver_t * ws;
 };
-typedef struct fd_websocket_ctx fd_websocket_ctx_t;
 
 // Parse the top level json request object
 void json_parse_root(struct fd_web_replier* replier, json_lex_state_t* lex, void* cb_arg) {
@@ -92,6 +91,16 @@ void fd_web_replier_error( struct fd_web_replier* r, const char* format, ... ) {
   int x = vsnprintf(text, sizeof(text), format, ap);
   va_end(ap);
   fd_web_replier_simple_error(r, text, (uint)x);
+}
+
+void fd_web_ws_error( fd_websocket_ctx_t * ctx, const char* format, ... ) {
+  char text[4096];
+  va_list ap;
+  va_start(ap, format);
+  /* Would be nice to vsnprintf directly into the textstream, but that's messy */
+  int x = vsnprintf(text, sizeof(text), format, ap);
+  va_end(ap);
+  fd_web_ws_simple_error(ctx, text, (uint)x);
 }
 
 void fd_web_replier_simple_error( struct fd_web_replier* r, const char* text, uint text_size) {
@@ -237,7 +246,6 @@ static enum MHD_Result handler(void* cls,
 
 int
 fd_webserver_ws_request( fd_websocket_ctx_t * ctx, char const * msg, ulong msglen ) {
-  (void)ctx;
   json_lex_state_t lex;
   json_lex_state_new(&lex, msg, msglen);
   struct json_values values;
@@ -247,7 +255,7 @@ fd_webserver_ws_request( fd_websocket_ctx_t * ctx, char const * msg, ulong msgle
   int ret = json_values_parse(&lex, &values, &path);
   if (ret) {
     json_values_printout(&values);
-//    fd_webserver_method_generic(replier, &values, cb_arg);
+    ret = fd_webserver_ws_subscribe(&values, ctx);
   } else {
     ulong sz;
     const char* text = json_lex_get_text(&lex, &sz);
@@ -259,6 +267,36 @@ fd_webserver_ws_request( fd_websocket_ctx_t * ctx, char const * msg, ulong msgle
 }
 
 #include "fd_websocket_support.h"
+
+void fd_web_ws_simple_error( fd_websocket_ctx_t * ctx, const char* text, uint text_size) {
+#define CRLF "\r\n"
+  static const char* DOC1 =
+"<html>" CRLF
+"<head>" CRLF
+"<title>ERROR</title>" CRLF
+"</head>" CRLF
+"<body>" CRLF
+"<p><em>";
+  static const char* DOC2 =
+"</em></p>" CRLF
+"</body>" CRLF
+"</html>" CRLF;
+
+  fd_textstream_t ts;
+  fd_textstream_new(&ts, fd_libc_alloc_virtual(), 1UL<<12);
+  fd_textstream_append(&ts, DOC1, strlen(DOC1));
+  fd_textstream_append(&ts, text, text_size);
+  fd_textstream_append(&ts, DOC2, strlen(DOC2));
+
+  char buf[2048];
+  ulong sz = fd_textstream_total_size(&ts);
+  if ( sz <= sizeof(buf) ) {
+    fd_textstream_get_output( &ts, buf );
+    ws_send_frame( ctx->sock, buf, sz );
+  }
+
+  fd_textstream_destroy(&ts);
+}
 
 int fd_webserver_start(ulong num_threads, ushort portno, ushort ws_portno, fd_webserver_t * ws, void * cb_arg) {
   ws->cb_arg = cb_arg;

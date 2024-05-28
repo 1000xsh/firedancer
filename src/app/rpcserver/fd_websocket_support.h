@@ -151,7 +151,7 @@ send_all (MHD_socket sock, const unsigned char *buf, size_t len)
   return off;
 }
 
-ssize_t
+static ssize_t
 ws_send_frame (MHD_socket sock, const char *msg, size_t length)
 {
   unsigned char *response;

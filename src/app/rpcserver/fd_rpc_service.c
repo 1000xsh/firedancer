@@ -1686,6 +1686,57 @@ fd_webserver_method_generic(struct fd_web_replier* replier, struct json_values* 
   fd_web_replier_done(replier);
 }
 
+int
+fd_webserver_ws_subscribe(struct json_values* values, fd_websocket_ctx_t * ctx) {
+  static const uint PATH[2] = {
+    (JSON_TOKEN_LBRACE<<16) | KEYW_JSON_JSONRPC,
+    (JSON_TOKEN_STRING<<16)
+  };
+  ulong arg_sz = 0;
+  const void* arg = json_get_value(values, PATH, 2, &arg_sz);
+  if (arg == NULL) {
+    fd_web_ws_error( ctx, "missing jsonrpc member" );
+    return 0;
+  }
+  if (!MATCH_STRING(arg, arg_sz, "2.0")) {
+    fd_web_ws_error( ctx, "jsonrpc value must be 2.0" );
+    return 0;
+  }
+
+  static const uint PATH3[2] = {
+    (JSON_TOKEN_LBRACE<<16) | KEYW_JSON_ID,
+    (JSON_TOKEN_INTEGER<<16)
+  };
+  arg_sz = 0;
+  arg = json_get_value(values, PATH3, 2, &arg_sz);
+  if (arg == NULL) {
+    fd_web_ws_error( ctx, "missing id member" );
+    return 0;
+  }
+  long call_id = *(long*)arg;
+  (void)call_id;
+
+  static const uint PATH2[2] = {
+    (JSON_TOKEN_LBRACE<<16) | KEYW_JSON_METHOD,
+    (JSON_TOKEN_STRING<<16)
+  };
+  arg_sz = 0;
+  arg = json_get_value(values, PATH2, 2, &arg_sz);
+  if (arg == NULL) {
+    fd_web_ws_error( ctx, "missing method member" );
+    return 0;
+  }
+  long meth_id = fd_webserver_json_keyword((const char*)arg, arg_sz);
+
+  switch (meth_id) {
+  case KEYW_WS_METHOD_ACCOUNTSUBSCRIBE:
+    return 1;
+  }
+
+  fd_web_ws_error( ctx, "unknown websocket method" );
+  return 0;
+}
+
 void
 fd_rpc_start_service(fd_rpcserver_args_t * args, fd_rpc_ctx_t ** ctx_p) {
   fd_rpc_ctx_t * ctx = (fd_rpc_ctx_t *)malloc(sizeof(fd_rpc_ctx_t));

@@ -149,7 +149,7 @@ long fd_webserver_json_keyword(const char* keyw, unsigned long keyw_sz) {
       }
       break;
     case 'p':
-      if (*(unsigned long*)&keyw[1] == 0x64496D6172676F72UL) {
+      if ((*(unsigned long*)&keyw[1] == 0x64496D6172676F72UL)) {
         return KEYW_JSON_PROGRAMID; // "programId"
       }
       break;
@@ -194,12 +194,12 @@ long fd_webserver_json_keyword(const char* keyw, unsigned long keyw_sz) {
     if (((*(unsigned long*)&keyw[0] & 0xFFFFFFUL) == 0x746567UL)) {
       switch (keyw[3]) {
       case 'B':
-        if (*(unsigned long*)&keyw[4] == 0x656D69546B636F6CUL) {
+        if ((*(unsigned long*)&keyw[4] == 0x656D69546B636F6CUL)) {
           return KEYW_RPCMETHOD_GETBLOCKTIME; // "getBlockTime"
         }
         break;
       case 'E':
-        if (*(unsigned long*)&keyw[4] == 0x6F666E4968636F70UL) {
+        if ((*(unsigned long*)&keyw[4] == 0x6F666E4968636F70UL)) {
           return KEYW_RPCMETHOD_GETEPOCHINFO; // "getEpochInfo"
         }
         break;
@@ -207,12 +207,41 @@ long fd_webserver_json_keyword(const char* keyw, unsigned long keyw_sz) {
     }
   break;
   case 13:
-    if ((*(unsigned long*)&keyw[0] == 0x4C746F6C53746567UL) && ((*(unsigned long*)&keyw[8] & 0xFFFFFFFFFFUL) == 0x7265646165UL)) {
-      return KEYW_RPCMETHOD_GETSLOTLEADER; // "getSlotLeader"
+    switch (keyw[0]) {
+    case 'g':
+      if ((*(unsigned long*)&keyw[1] == 0x654C746F6C537465UL) && ((*(unsigned long*)&keyw[9] & 0xFFFFFFFFUL) == 0x72656461UL)) {
+        return KEYW_RPCMETHOD_GETSLOTLEADER; // "getSlotLeader"
+      }
+      break;
+    case 'l':
+      if ((*(unsigned long*)&keyw[1] == 0x637362755373676FUL) && ((*(unsigned long*)&keyw[9] & 0xFFFFFFFFUL) == 0x65626972UL)) {
+        return KEYW_WS_METHOD_LOGSSUBSCRIBE; // "logsSubscribe"
+      }
+      break;
+    case 'r':
+      if ((*(unsigned long*)&keyw[1] == 0x6373627553746F6FUL) && ((*(unsigned long*)&keyw[9] & 0xFFFFFFFFUL) == 0x65626972UL)) {
+        return KEYW_WS_METHOD_ROOTSUBSCRIBE; // "rootSubscribe"
+      }
+      break;
+    case 's':
+      if ((*(unsigned long*)&keyw[1] == 0x6373627553746F6CUL) && ((*(unsigned long*)&keyw[9] & 0xFFFFFFFFUL) == 0x65626972UL)) {
+        return KEYW_WS_METHOD_SLOTSUBSCRIBE; // "slotSubscribe"
+      }
+      break;
+    case 'v':
+      if ((*(unsigned long*)&keyw[1] == 0x637362755365746FUL) && ((*(unsigned long*)&keyw[9] & 0xFFFFFFFFUL) == 0x65626972UL)) {
+        return KEYW_WS_METHOD_VOTESUBSCRIBE; // "voteSubscribe"
+      }
+      break;
     }
   break;
   case 14:
     switch (keyw[0]) {
+    case 'b':
+      if ((*(unsigned long*)&keyw[1] == 0x736275536B636F6CUL) && ((*(unsigned long*)&keyw[9] & 0xFFFFFFFFFFUL) == 0x6562697263UL)) {
+        return KEYW_WS_METHOD_BLOCKSUBSCRIBE; // "blockSubscribe"
+      }
+      break;
     case 'g':
       if (((*(unsigned long*)&keyw[1] & 0xFFFFUL) == 0x7465UL)) {
         switch (keyw[3]) {
@@ -283,15 +312,49 @@ long fd_webserver_json_keyword(const char* keyw, unsigned long keyw_sz) {
         }
       }
       break;
+    case 'l':
+      if ((*(unsigned long*)&keyw[1] == 0x6275736E5573676FUL) && ((*(unsigned long*)&keyw[9] & 0xFFFFFFFFFFFFUL) == 0x656269726373UL)) {
+        return KEYW_WS_METHOD_LOGSUNSUBSCRIBE; // "logsUnsubscribe"
+      }
+      break;
+    case 'r':
+      if ((*(unsigned long*)&keyw[1] == 0x6275736E55746F6FUL) && ((*(unsigned long*)&keyw[9] & 0xFFFFFFFFFFFFUL) == 0x656269726373UL)) {
+        return KEYW_WS_METHOD_ROOTUNSUBSCRIBE; // "rootUnsubscribe"
+      }
+      break;
     case 's':
-      if ((*(unsigned long*)&keyw[1] == 0x736E617254646E65UL) && ((*(unsigned long*)&keyw[9] & 0xFFFFFFFFFFFFUL) == 0x6E6F69746361UL)) {
-        return KEYW_RPCMETHOD_SENDTRANSACTION; // "sendTransaction"
+      switch (keyw[1]) {
+      case 'e':
+        if ((*(unsigned long*)&keyw[2] == 0x61736E617254646EUL) && ((*(unsigned long*)&keyw[10] & 0xFFFFFFFFFFUL) == 0x6E6F697463UL)) {
+          return KEYW_RPCMETHOD_SENDTRANSACTION; // "sendTransaction"
+        }
+        break;
+      case 'l':
+        if ((*(unsigned long*)&keyw[2] == 0x736275736E55746FUL) && ((*(unsigned long*)&keyw[10] & 0xFFFFFFFFFFUL) == 0x6562697263UL)) {
+          return KEYW_WS_METHOD_SLOTUNSUBSCRIBE; // "slotUnsubscribe"
+        }
+        break;
+      }
+      break;
+    case 'v':
+      if ((*(unsigned long*)&keyw[1] == 0x6275736E5565746FUL) && ((*(unsigned long*)&keyw[9] & 0xFFFFFFFFFFFFUL) == 0x656269726373UL)) {
+        return KEYW_WS_METHOD_VOTEUNSUBSCRIBE; // "voteUnsubscribe"
       }
       break;
     }
   break;
   case 16:
     switch (keyw[0]) {
+    case 'a':
+      if ((*(unsigned long*)&keyw[1] == 0x7553746E756F6363UL) && ((*(unsigned long*)&keyw[9] & 0xFFFFFFFFFFFFFFUL) == 0x65626972637362UL)) {
+        return KEYW_WS_METHOD_ACCOUNTSUBSCRIBE; // "accountSubscribe"
+      }
+      break;
+    case 'b':
+      if ((*(unsigned long*)&keyw[1] == 0x75736E556B636F6CUL) && ((*(unsigned long*)&keyw[9] & 0xFFFFFFFFFFFFFFUL) == 0x65626972637362UL)) {
+        return KEYW_WS_METHOD_BLOCKUNSUBSCRIBE; // "blockUnsubscribe"
+      }
+      break;
     case 'g':
       if (((*(unsigned long*)&keyw[1] & 0xFFFFUL) == 0x7465UL)) {
         switch (keyw[3]) {
@@ -316,6 +379,11 @@ long fd_webserver_json_keyword(const char* keyw, unsigned long keyw_sz) {
     case 'i':
       if ((*(unsigned long*)&keyw[1] == 0x61686B636F6C4273UL) && ((*(unsigned long*)&keyw[9] & 0xFFFFFFFFFFFFFFUL) == 0x64696C61566873UL)) {
         return KEYW_RPCMETHOD_ISBLOCKHASHVALID; // "isBlockhashValid"
+      }
+      break;
+    case 'p':
+      if ((*(unsigned long*)&keyw[1] == 0x75536D6172676F72UL) && ((*(unsigned long*)&keyw[9] & 0xFFFFFFFFFFFFFFUL) == 0x65626972637362UL)) {
+        return KEYW_WS_METHOD_PROGRAMSUBSCRIBE; // "programSubscribe"
       }
       break;
     }
@@ -347,6 +415,11 @@ long fd_webserver_json_keyword(const char* keyw, unsigned long keyw_sz) {
   break;
   case 18:
     switch (keyw[0]) {
+    case 'a':
+      if ((*(unsigned long*)&keyw[1] == 0x6E55746E756F6363UL) && (*(unsigned long*)&keyw[9] == 0x6269726373627573UL) && keyw[17] == 'e') {
+        return KEYW_WS_METHOD_ACCOUNTUNSUBSCRIBE; // "accountUnsubscribe"
+      }
+      break;
     case 'g':
       if (((*(unsigned long*)&keyw[1] & 0xFFFFUL) == 0x7465UL)) {
         switch (keyw[3]) {
@@ -420,6 +493,16 @@ long fd_webserver_json_keyword(const char* keyw, unsigned long keyw_sz) {
         }
       }
       break;
+    case 'p':
+      if ((*(unsigned long*)&keyw[1] == 0x6E556D6172676F72UL) && (*(unsigned long*)&keyw[9] == 0x6269726373627573UL) && keyw[17] == 'e') {
+        return KEYW_WS_METHOD_PROGRAMUNSUBSCRIBE; // "programUnsubscribe"
+      }
+      break;
+    case 's':
+      if ((*(unsigned long*)&keyw[1] == 0x65727574616E6769UL) && (*(unsigned long*)&keyw[9] == 0x6269726373627553UL) && keyw[17] == 'e') {
+        return KEYW_WS_METHOD_SIGNATURESUBSCRIBE; // "signatureSubscribe"
+      }
+      break;
     case 't':
       if ((*(unsigned long*)&keyw[1] == 0x69746361736E6172UL) && (*(unsigned long*)&keyw[9] == 0x6C69617465446E6FUL) && keyw[17] == 's') {
         return KEYW_JSON_TRANSACTIONDETAILS; // "transactionDetails"
@@ -453,29 +536,47 @@ long fd_webserver_json_keyword(const char* keyw, unsigned long keyw_sz) {
     }
   break;
   case 20:
-    if (((*(unsigned long*)&keyw[0] & 0xFFFFFFUL) == 0x746567UL)) {
-      switch (keyw[3]) {
-      case 'I':
-        if ((*(unsigned long*)&keyw[4] == 0x6E6F6974616C666EUL) && (*(unsigned long*)&keyw[12] == 0x726F6E7265766F47UL)) {
-          return KEYW_RPCMETHOD_GETINFLATIONGOVERNOR; // "getInflationGovernor"
+    switch (keyw[0]) {
+    case 'g':
+      if (((*(unsigned long*)&keyw[1] & 0xFFFFUL) == 0x7465UL)) {
+        switch (keyw[3]) {
+        case 'I':
+          if ((*(unsigned long*)&keyw[4] == 0x6E6F6974616C666EUL) && (*(unsigned long*)&keyw[12] == 0x726F6E7265766F47UL)) {
+            return KEYW_RPCMETHOD_GETINFLATIONGOVERNOR; // "getInflationGovernor"
+          }
+          break;
+        case 'M':
+          if ((*(unsigned long*)&keyw[4] == 0x6E61727465527861UL) && (*(unsigned long*)&keyw[12] == 0x746F6C5374696D73UL)) {
+            return KEYW_RPCMETHOD_GETMAXRETRANSMITSLOT; // "getMaxRetransmitSlot"
+          }
+          break;
+        case 'S':
+          if ((*(unsigned long*)&keyw[4] == 0x65727574616E6769UL) && (*(unsigned long*)&keyw[12] == 0x7365737574617453UL)) {
+            return KEYW_RPCMETHOD_GETSIGNATURESTATUSES; // "getSignatureStatuses"
+          }
+          break;
         }
-        break;
-      case 'M':
-        if ((*(unsigned long*)&keyw[4] == 0x6E61727465527861UL) && (*(unsigned long*)&keyw[12] == 0x746F6C5374696D73UL)) {
-          return KEYW_RPCMETHOD_GETMAXRETRANSMITSLOT; // "getMaxRetransmitSlot"
-        }
-        break;
-      case 'S':
-        if ((*(unsigned long*)&keyw[4] == 0x65727574616E6769UL) && (*(unsigned long*)&keyw[12] == 0x7365737574617453UL)) {
-          return KEYW_RPCMETHOD_GETSIGNATURESTATUSES; // "getSignatureStatuses"
-        }
-        break;
       }
+      break;
+    case 's':
+      if ((*(unsigned long*)&keyw[1] == 0x65727574616E6769UL) && (*(unsigned long*)&keyw[9] == 0x7263736275736E55UL) && ((*(unsigned long*)&keyw[17] & 0xFFFFFFUL) == 0x656269UL)) {
+        return KEYW_WS_METHOD_SIGNATUREUNSUBSCRIBE; // "signatureUnsubscribe"
+      }
+      break;
     }
   break;
   case 21:
-    if ((*(unsigned long*)&keyw[0] == 0x685378614D746567UL) && (*(unsigned long*)&keyw[8] == 0x7265736E49646572UL) && ((*(unsigned long*)&keyw[16] & 0xFFFFFFFFFFUL) == 0x746F6C5374UL)) {
-      return KEYW_RPCMETHOD_GETMAXSHREDINSERTSLOT; // "getMaxShredInsertSlot"
+    switch (keyw[0]) {
+    case 'g':
+      if ((*(unsigned long*)&keyw[1] == 0x72685378614D7465UL) && (*(unsigned long*)&keyw[9] == 0x747265736E496465UL) && ((*(unsigned long*)&keyw[17] & 0xFFFFFFFFUL) == 0x746F6C53UL)) {
+        return KEYW_RPCMETHOD_GETMAXSHREDINSERTSLOT; // "getMaxShredInsertSlot"
+      }
+      break;
+    case 's':
+      if ((*(unsigned long*)&keyw[1] == 0x6164705573746F6CUL) && (*(unsigned long*)&keyw[9] == 0x6373627553736574UL) && ((*(unsigned long*)&keyw[17] & 0xFFFFFFFFUL) == 0x65626972UL)) {
+        return KEYW_WS_METHOD_SLOTSUPDATESSUBSCRIBE; // "slotsUpdatesSubscribe"
+      }
+      break;
     }
   break;
   case 22:
@@ -500,35 +601,44 @@ long fd_webserver_json_keyword(const char* keyw, unsigned long keyw_sz) {
     }
   break;
   case 23:
-    if (((*(unsigned long*)&keyw[0] & 0xFFFFFFUL) == 0x746567UL)) {
-      switch (keyw[3]) {
-      case 'C':
-        if ((*(unsigned long*)&keyw[4] == 0x64656D7269666E6FUL) && (*(unsigned long*)&keyw[12] == 0x746361736E617254UL) && ((*(unsigned long*)&keyw[20] & 0xFFFFFFUL) == 0x6E6F69UL)) {
-          return KEYW_RPCMETHOD_GETCONFIRMEDTRANSACTION; // "getConfirmedTransaction"
-        }
-        break;
-      case 'S':
-        if ((*(unsigned long*)&keyw[4] == 0x65727574616E6769UL) && (*(unsigned long*)&keyw[12] == 0x72646441726F4673UL) && ((*(unsigned long*)&keyw[20] & 0xFFFFFFUL) == 0x737365UL)) {
-          return KEYW_RPCMETHOD_GETSIGNATURESFORADDRESS; // "getSignaturesForAddress"
-        }
-        break;
-      case 'T':
-        if (((*(unsigned long*)&keyw[4] & 0xFFFFFFFFUL) == 0x6E656B6FUL)) {
-          switch (keyw[8]) {
-          case 'A':
-            if ((*(unsigned long*)&keyw[9] == 0x4273746E756F6363UL) && ((*(unsigned long*)&keyw[17] & 0xFFFFFFFFFFFFUL) == 0x72656E774F79UL)) {
-              return KEYW_RPCMETHOD_GETTOKENACCOUNTSBYOWNER; // "getTokenAccountsByOwner"
-            }
-            break;
-          case 'L':
-            if ((*(unsigned long*)&keyw[9] == 0x6341747365677261UL) && ((*(unsigned long*)&keyw[17] & 0xFFFFFFFFFFFFUL) == 0x73746E756F63UL)) {
-              return KEYW_RPCMETHOD_GETTOKENLARGESTACCOUNTS; // "getTokenLargestAccounts"
-            }
-            break;
+    switch (keyw[0]) {
+    case 'g':
+      if (((*(unsigned long*)&keyw[1] & 0xFFFFUL) == 0x7465UL)) {
+        switch (keyw[3]) {
+        case 'C':
+          if ((*(unsigned long*)&keyw[4] == 0x64656D7269666E6FUL) && (*(unsigned long*)&keyw[12] == 0x746361736E617254UL) && ((*(unsigned long*)&keyw[20] & 0xFFFFFFUL) == 0x6E6F69UL)) {
+            return KEYW_RPCMETHOD_GETCONFIRMEDTRANSACTION; // "getConfirmedTransaction"
           }
+          break;
+        case 'S':
+          if ((*(unsigned long*)&keyw[4] == 0x65727574616E6769UL) && (*(unsigned long*)&keyw[12] == 0x72646441726F4673UL) && ((*(unsigned long*)&keyw[20] & 0xFFFFFFUL) == 0x737365UL)) {
+            return KEYW_RPCMETHOD_GETSIGNATURESFORADDRESS; // "getSignaturesForAddress"
+          }
+          break;
+        case 'T':
+          if (((*(unsigned long*)&keyw[4] & 0xFFFFFFFFUL) == 0x6E656B6FUL)) {
+            switch (keyw[8]) {
+            case 'A':
+              if ((*(unsigned long*)&keyw[9] == 0x4273746E756F6363UL) && ((*(unsigned long*)&keyw[17] & 0xFFFFFFFFFFFFUL) == 0x72656E774F79UL)) {
+                return KEYW_RPCMETHOD_GETTOKENACCOUNTSBYOWNER; // "getTokenAccountsByOwner"
+              }
+              break;
+            case 'L':
+              if ((*(unsigned long*)&keyw[9] == 0x6341747365677261UL) && ((*(unsigned long*)&keyw[17] & 0xFFFFFFFFFFFFUL) == 0x73746E756F63UL)) {
+                return KEYW_RPCMETHOD_GETTOKENLARGESTACCOUNTS; // "getTokenLargestAccounts"
+              }
+              break;
+            }
+          }
+          break;
         }
-        break;
       }
+      break;
+    case 's':
+      if ((*(unsigned long*)&keyw[1] == 0x6164705573746F6CUL) && (*(unsigned long*)&keyw[9] == 0x6275736E55736574UL) && ((*(unsigned long*)&keyw[17] & 0xFFFFFFFFFFFFUL) == 0x656269726373UL)) {
+        return KEYW_WS_METHOD_SLOTSUPDATESUNSUBSCRIBE; // "slotsUpdatesUnsubscribe"
+      }
+      break;
     }
   break;
   case 24:
@@ -689,6 +799,24 @@ const char* un_fd_webserver_json_keyword(long id) {
   case KEYW_RPCMETHOD_REQUESTAIRDROP: return "requestAirdrop";
   case KEYW_RPCMETHOD_SENDTRANSACTION: return "sendTransaction";
   case KEYW_RPCMETHOD_SIMULATETRANSACTION: return "simulateTransaction";
+  case KEYW_WS_METHOD_ACCOUNTSUBSCRIBE: return "accountSubscribe";
+  case KEYW_WS_METHOD_ACCOUNTUNSUBSCRIBE: return "accountUnsubscribe";
+  case KEYW_WS_METHOD_BLOCKSUBSCRIBE: return "blockSubscribe";
+  case KEYW_WS_METHOD_BLOCKUNSUBSCRIBE: return "blockUnsubscribe";
+  case KEYW_WS_METHOD_LOGSSUBSCRIBE: return "logsSubscribe";
+  case KEYW_WS_METHOD_LOGSUNSUBSCRIBE: return "logsUnsubscribe";
+  case KEYW_WS_METHOD_PROGRAMSUBSCRIBE: return "programSubscribe";
+  case KEYW_WS_METHOD_PROGRAMUNSUBSCRIBE: return "programUnsubscribe";
+  case KEYW_WS_METHOD_ROOTSUBSCRIBE: return "rootSubscribe";
+  case KEYW_WS_METHOD_ROOTUNSUBSCRIBE: return "rootUnsubscribe";
+  case KEYW_WS_METHOD_SIGNATURESUBSCRIBE: return "signatureSubscribe";
+  case KEYW_WS_METHOD_SIGNATUREUNSUBSCRIBE: return "signatureUnsubscribe";
+  case KEYW_WS_METHOD_SLOTSUBSCRIBE: return "slotSubscribe";
+  case KEYW_WS_METHOD_SLOTUNSUBSCRIBE: return "slotUnsubscribe";
+  case KEYW_WS_METHOD_SLOTSUPDATESSUBSCRIBE: return "slotsUpdatesSubscribe";
+  case KEYW_WS_METHOD_SLOTSUPDATESUNSUBSCRIBE: return "slotsUpdatesUnsubscribe";
+  case KEYW_WS_METHOD_VOTESUBSCRIBE: return "voteSubscribe";
+  case KEYW_WS_METHOD_VOTEUNSUBSCRIBE: return "voteUnsubscribe";
   }
   return "???";
 }
