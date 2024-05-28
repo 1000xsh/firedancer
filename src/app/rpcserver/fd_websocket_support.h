@@ -280,7 +280,7 @@ ws_send_frame (MHD_socket sock, const char *msg, size_t length)
   for (i = 0; i < MAX_CLIENTS; i++)
   {
     isock = CLIENT_SOCKS[i];
-    if ((isock != MHD_INVALID_SOCKET) && (isock != sock))
+    if ((isock != MHD_INVALID_SOCKET) && (isock == sock))
     {
       output += send_all (isock, response, idx_response);
     }
