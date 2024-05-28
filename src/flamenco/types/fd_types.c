@@ -1287,7 +1287,7 @@ int fd_epoch_schedule_decode_preflight( fd_bincode_decode_ctx_t * ctx ) {
   if( FD_UNLIKELY( err!=FD_BINCODE_SUCCESS ) ) return err;
   err = fd_bincode_uint64_decode_preflight( ctx );
   if( FD_UNLIKELY( err!=FD_BINCODE_SUCCESS ) ) return err;
-  err = fd_bincode_uint8_decode_preflight( ctx );
+  err = fd_bincode_bool_decode_preflight( ctx );
   if( FD_UNLIKELY( err ) ) return err;
   err = fd_bincode_uint64_decode_preflight( ctx );
   if( FD_UNLIKELY( err!=FD_BINCODE_SUCCESS ) ) return err;
@@ -1298,7 +1298,7 @@ int fd_epoch_schedule_decode_preflight( fd_bincode_decode_ctx_t * ctx ) {
 void fd_epoch_schedule_decode_unsafe( fd_epoch_schedule_t * self, fd_bincode_decode_ctx_t * ctx ) {
   fd_bincode_uint64_decode_unsafe( &self->slots_per_epoch, ctx );
   fd_bincode_uint64_decode_unsafe( &self->leader_schedule_slot_offset, ctx );
-  fd_bincode_uint8_decode_unsafe( &self->warmup, ctx );
+  fd_bincode_bool_decode_unsafe( &self->warmup, ctx );
   fd_bincode_uint64_decode_unsafe( &self->first_normal_epoch, ctx );
   fd_bincode_uint64_decode_unsafe( &self->first_normal_slot, ctx );
 }
@@ -1312,7 +1312,7 @@ int fd_epoch_schedule_decode_offsets( fd_epoch_schedule_off_t * self, fd_bincode
   err = fd_bincode_uint64_decode_preflight( ctx );
   if( FD_UNLIKELY( err!=FD_BINCODE_SUCCESS ) ) return err;
   self->warmup_off = (uint)( (ulong)ctx->data - (ulong)data );
-  err = fd_bincode_uint8_decode_preflight( ctx );
+  err = fd_bincode_bool_decode_preflight( ctx );
   if( FD_UNLIKELY( err ) ) return err;
   self->first_normal_epoch_off = (uint)( (ulong)ctx->data - (ulong)data );
   err = fd_bincode_uint64_decode_preflight( ctx );
@@ -1335,7 +1335,7 @@ void fd_epoch_schedule_walk( void * w, fd_epoch_schedule_t const * self, fd_type
   fun( w, self, name, FD_FLAMENCO_TYPE_MAP, "fd_epoch_schedule", level++ );
   fun( w, &self->slots_per_epoch, "slots_per_epoch", FD_FLAMENCO_TYPE_ULONG, "ulong", level );
   fun( w, &self->leader_schedule_slot_offset, "leader_schedule_slot_offset", FD_FLAMENCO_TYPE_ULONG, "ulong", level );
-  fun( w, &self->warmup, "warmup", FD_FLAMENCO_TYPE_UCHAR, "uchar", level );
+  fun( w, &self->warmup, "warmup", FD_FLAMENCO_TYPE_BOOL, "bool", level );
   fun( w, &self->first_normal_epoch, "first_normal_epoch", FD_FLAMENCO_TYPE_ULONG, "ulong", level );
   fun( w, &self->first_normal_slot, "first_normal_slot", FD_FLAMENCO_TYPE_ULONG, "ulong", level );
   fun( w, self, name, FD_FLAMENCO_TYPE_MAP_END, "fd_epoch_schedule", level-- );
@@ -1356,7 +1356,7 @@ int fd_epoch_schedule_encode( fd_epoch_schedule_t const * self, fd_bincode_encod
   if( FD_UNLIKELY( err ) ) return err;
   err = fd_bincode_uint64_encode( self->leader_schedule_slot_offset, ctx );
   if( FD_UNLIKELY( err ) ) return err;
-  err = fd_bincode_uint8_encode( (uchar)(self->warmup), ctx );
+  err = fd_bincode_bool_encode( (uchar)(self->warmup), ctx );
   if( FD_UNLIKELY( err ) ) return err;
   err = fd_bincode_uint64_encode( self->first_normal_epoch, ctx );
   if( FD_UNLIKELY( err ) ) return err;
@@ -17910,13 +17910,13 @@ int fd_frozen_hash_status_decode_preflight( fd_bincode_decode_ctx_t * ctx ) {
   int err;
   err = fd_hash_decode_preflight( ctx );
   if( FD_UNLIKELY( err ) ) return err;
-  err = fd_bincode_uint8_decode_preflight( ctx );
+  err = fd_bincode_bool_decode_preflight( ctx );
   if( FD_UNLIKELY( err ) ) return err;
   return FD_BINCODE_SUCCESS;
 }
 void fd_frozen_hash_status_decode_unsafe( fd_frozen_hash_status_t * self, fd_bincode_decode_ctx_t * ctx ) {
   fd_hash_decode_unsafe( &self->frozen_hash, ctx );
-  fd_bincode_uint8_decode_unsafe( &self->frozen_status, ctx );
+  fd_bincode_bool_decode_unsafe( &self->is_duplicate_confirmed, ctx );
 }
 int fd_frozen_hash_status_decode_offsets( fd_frozen_hash_status_off_t * self, fd_bincode_decode_ctx_t * ctx ) {
   uchar const * data = ctx->data;
@@ -17924,8 +17924,8 @@ int fd_frozen_hash_status_decode_offsets( fd_frozen_hash_status_off_t * self, fd
   self->frozen_hash_off = (uint)( (ulong)ctx->data - (ulong)data );
   err = fd_hash_decode_preflight( ctx );
   if( FD_UNLIKELY( err ) ) return err;
-  self->frozen_status_off = (uint)( (ulong)ctx->data - (ulong)data );
-  err = fd_bincode_uint8_decode_preflight( ctx );
+  self->is_duplicate_confirmed_off = (uint)( (ulong)ctx->data - (ulong)data );
+  err = fd_bincode_bool_decode_preflight( ctx );
   if( FD_UNLIKELY( err ) ) return err;
   return FD_BINCODE_SUCCESS;
 }
@@ -17943,7 +17943,7 @@ ulong fd_frozen_hash_status_align( void ){ return FD_FROZEN_HASH_STATUS_ALIGN; }
 void fd_frozen_hash_status_walk( void * w, fd_frozen_hash_status_t const * self, fd_types_walk_fn_t fun, const char *name, uint level ) {
   fun( w, self, name, FD_FLAMENCO_TYPE_MAP, "fd_frozen_hash_status", level++ );
   fd_hash_walk( w, &self->frozen_hash, fun, "frozen_hash", level );
-  fun( w, &self->frozen_status, "frozen_status", FD_FLAMENCO_TYPE_UCHAR, "uchar", level );
+  fun( w, &self->is_duplicate_confirmed, "is_duplicate_confirmed", FD_FLAMENCO_TYPE_BOOL, "bool", level );
   fun( w, self, name, FD_FLAMENCO_TYPE_MAP_END, "fd_frozen_hash_status", level-- );
 }
 ulong fd_frozen_hash_status_size( fd_frozen_hash_status_t const * self ) {
@@ -17957,7 +17957,7 @@ int fd_frozen_hash_status_encode( fd_frozen_hash_status_t const * self, fd_binco
   int err;
   err = fd_hash_encode( &self->frozen_hash, ctx );
   if( FD_UNLIKELY( err ) ) return err;
-  err = fd_bincode_uint8_encode( (uchar)(self->frozen_status), ctx );
+  err = fd_bincode_bool_encode( (uchar)(self->is_duplicate_confirmed), ctx );
   if( FD_UNLIKELY( err ) ) return err;
   return FD_BINCODE_SUCCESS;
 }
