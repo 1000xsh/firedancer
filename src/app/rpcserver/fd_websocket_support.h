@@ -1,62 +1,22 @@
 #include <openssl/sha.h>
 
-#define CHAT_PAGE                                                       \
-  "<html>\n"                                                                  \
-  "<head>\n"                                                                  \
-  "<title>WebSocket chat</title>\n"                                           \
-  "<script>\n"                                                                \
-  "document.addEventListener('DOMContentLoaded', function() {\n"              \
-  "  const ws = new WebSocket('ws:/" "/' + window.location.host);\n"          \
-  "  const btn = document.getElementById('send');\n"                          \
-  "  const msg = document.getElementById('msg');\n"                           \
-  "  const log = document.getElementById('log');\n"                           \
-  "  ws.onopen = function() {\n"                                              \
-  "    log.value += 'Connected\\n';\n"                                        \
-  "  };\n"                                                                    \
-  "  ws.onclose = function() {\n"                                             \
-  "    log.value += 'Disconnected\\n';\n"                                     \
-  "  };\n"                                                                    \
-  "  ws.onmessage = function(ev) {\n"                                         \
-  "    log.value += ev.data + '\\n';\n"                                       \
-  "  };\n"                                                                    \
-  "  btn.onclick = function() {\n"                                            \
-  "    log.value += '<You>: ' + msg.value + '\\n';\n"                         \
-  "    ws.send(msg.value);\n"                                                 \
-  "  };\n"                                                                    \
-  "  msg.onkeyup = function(ev) {\n"                                          \
-  "    if (ev.keyCode === 13) {\n"                                            \
-  "      ev.preventDefault();\n"                                              \
-  "      ev.stopPropagation();\n"                                             \
-  "      btn.click();\n"                                                      \
-  "      msg.value = '';\n"                                                   \
-  "    }\n"                                                                   \
-  "  };\n"                                                                    \
-  "});\n"                                                                     \
-  "</script>\n"                                                               \
-  "</head>\n"                                                                 \
-  "<body>\n"                                                                  \
-  "<input type='text' id='msg' autofocus/>\n"                                 \
-  "<input type='button' id='send' value='Send' /><br /><br />\n"              \
-  "<textarea id='log' rows='20' cols='28'></textarea>\n"                      \
-  "</body>\n"                                                                 \
-  "</html>"
-#define BAD_REQUEST_PAGE                                                      \
-  "<html>\n"                                                                  \
-  "<head>\n"                                                                  \
-  "<title>WebSocket chat</title>\n"                                           \
-  "</head>\n"                                                                 \
-  "<body>\n"                                                                  \
-  "Bad Request\n"                                                             \
-  "</body>\n"                                                                 \
+#define BAD_REQUEST_PAGE                                                \
+  "<html>\n"                                                            \
+  "<head>\n"                                                            \
+  "<title>fd_rpcserver</title>\n"                                       \
+  "</head>\n"                                                           \
+  "<body>\n"                                                            \
+  "Bad Request\n"                                                       \
+  "</body>\n"                                                           \
   "</html>\n"
-#define UPGRADE_REQUIRED_PAGE                                                 \
-  "<html>\n"                                                                  \
-  "<head>\n"                                                                  \
-  "<title>WebSocket chat</title>\n"                                           \
-  "</head>\n"                                                                 \
-  "<body>\n"                                                                  \
-  "Upgrade required\n"                                                        \
-  "</body>\n"                                                                 \
+#define UPGRADE_REQUIRED_PAGE                                           \
+  "<html>\n"                                                            \
+  "<head>\n"                                                            \
+  "<title>fd_rpcserver</title>\n"                                       \
+  "</head>\n"                                                           \
+  "<body>\n"                                                            \
+  "Upgrade required\n"                                                  \
+  "</body>\n"                                                           \
   "</html>\n"
 
 #define WS_SEC_WEBSOCKET_VERSION "13"
@@ -70,17 +30,11 @@
 #define WS_OPCODE_CON_CLOSE_FRAME 8
 #define SHA1HashSize 20
 
-#define MAX_CLIENTS 10
-
-static MHD_socket CLIENT_SOCKS[MAX_CLIENTS];
-
 struct WsData
 {
   struct MHD_UpgradeResponseHandle *urh;
   MHD_socket sock;
 };
-
-
 
 static enum MHD_Result
 is_websocket_request (struct MHD_Connection *con, const char *upg_header,
@@ -99,19 +53,6 @@ is_websocket_request (struct MHD_Connection *con, const char *upg_header,
 static void do_nothing(void * arg) { (void)arg; }
 
 static enum MHD_Result
-send_chat_page (struct MHD_Connection *con)
-{
-  struct MHD_Response *res;
-  enum MHD_Result ret;
-
-  res = MHD_create_response_from_buffer_with_free_callback (strlen (CHAT_PAGE), (void *) CHAT_PAGE, do_nothing);
-  ret = MHD_queue_response (con, MHD_HTTP_OK, res);
-  MHD_destroy_response (res);
-  return ret;
-}
-
-
-static enum MHD_Result
 send_bad_request (struct MHD_Connection *con)
 {
   struct MHD_Response *res;
@@ -122,7 +63,6 @@ send_bad_request (struct MHD_Connection *con)
   MHD_destroy_response (res);
   return ret;
 }
-
 
 static enum MHD_Result
 send_upgrade_required (struct MHD_Connection *con)
@@ -142,7 +82,6 @@ send_upgrade_required (struct MHD_Connection *con)
   MHD_destroy_response (res);
   return ret;
 }
-
 
 static enum MHD_Result
 ws_get_accept_value (const char *key, char * val)
@@ -188,7 +127,6 @@ make_blocking (MHD_socket fd)
 #endif /* MHD_WINSOCK_SOCKETS */
 }
 
-
 static size_t
 send_all (MHD_socket sock, const unsigned char *buf, size_t len)
 {
@@ -219,7 +157,6 @@ send_all (MHD_socket sock, const unsigned char *buf, size_t len)
   return off;
 }
 
-
 static ssize_t
 ws_send_frame (MHD_socket sock, const char *msg, size_t length)
 {
@@ -228,7 +165,6 @@ ws_send_frame (MHD_socket sock, const char *msg, size_t length)
   unsigned char idx_first_rdata;
   size_t idx_response;
   size_t output;
-  MHD_socket isock;
   size_t i;
 
   frame[0] = (WS_FIN | WS_OPCODE_TEXT_FRAME);
@@ -276,19 +212,10 @@ ws_send_frame (MHD_socket sock, const char *msg, size_t length)
     idx_response++;
   }
   response[idx_response] = '\0';
-  output = 0;
-  for (i = 0; i < MAX_CLIENTS; i++)
-  {
-    isock = CLIENT_SOCKS[i];
-    if ((isock != MHD_INVALID_SOCKET) && (isock == sock))
-    {
-      output += send_all (isock, response, idx_response);
-    }
-  }
+  output = send_all (sock, response, idx_response);
   free (response);
   return (ssize_t) output;
 }
-
 
 static unsigned char *
 ws_receive_frame (unsigned char *frame, ssize_t *length, int *type)
@@ -346,7 +273,6 @@ ws_receive_frame (unsigned char *frame, ssize_t *length, int *type)
   return msg;
 }
 
-
 static void *
 run_usock (void *cls)
 {
@@ -357,7 +283,6 @@ run_usock (void *cls)
   char *text;
   ssize_t got;
   int type;
-  int i;
 
   make_blocking (ws->sock);
   while (1)
@@ -409,19 +334,10 @@ run_usock (void *cls)
       }
     }
   }
-  for (i = 0; i < MAX_CLIENTS; i++)
-  {
-    if (CLIENT_SOCKS[i] == ws->sock)
-    {
-      CLIENT_SOCKS[i] = MHD_INVALID_SOCKET;
-      break;
-    }
-  }
   free (ws);
   MHD_upgrade_action (urh, MHD_UPGRADE_ACTION_CLOSE);
   return NULL;
 }
-
 
 static void
 uh_cb (void *cls, struct MHD_Connection *con, void *req_cls,
@@ -430,8 +346,6 @@ uh_cb (void *cls, struct MHD_Connection *con, void *req_cls,
 {
   struct WsData *ws;
   pthread_t pt;
-  int sock_overflow;
-  int i;
 
   (void) cls;            /* Unused. Silent compiler warning. */
   (void) con;            /* Unused. Silent compiler warning. */
@@ -445,22 +359,6 @@ uh_cb (void *cls, struct MHD_Connection *con, void *req_cls,
   memset (ws, 0, sizeof (struct WsData));
   ws->sock = sock;
   ws->urh = urh;
-  sock_overflow = MHD_YES;
-  for (i = 0; i < MAX_CLIENTS; i++)
-  {
-    if (MHD_INVALID_SOCKET == CLIENT_SOCKS[i])
-    {
-      CLIENT_SOCKS[i] = ws->sock;
-      sock_overflow = MHD_NO;
-      break;
-    }
-  }
-  if (sock_overflow)
-  {
-    free (ws);
-    MHD_upgrade_action (urh, MHD_UPGRADE_ACTION_CLOSE);
-    return;
-  }
   if (0 != pthread_create (&pt, NULL, &run_usock, ws))
     abort ();
   /* Note that by detaching like this we make it impossible to ensure
@@ -468,7 +366,6 @@ uh_cb (void *cls, struct MHD_Connection *con, void *req_cls,
      is still running. Alas, this is a simple example... */
   pthread_detach (pt);
 }
-
 
 static enum MHD_Result
 ahc_cb (void *cls, struct MHD_Connection *con, const char *url,
@@ -500,7 +397,7 @@ ahc_cb (void *cls, struct MHD_Connection *con, const char *url,
                                             MHD_HTTP_HEADER_CONNECTION);
   if (MHD_NO == is_websocket_request (con, upg_header, con_header))
   {
-    return send_chat_page (con);
+    return send_bad_request (con);
   }
   if ((0 != strcmp (method, MHD_HTTP_METHOD_GET))
       || (0 != strcmp (version, MHD_HTTP_VERSION_1_1)))

@@ -407,8 +407,6 @@ int fd_webserver_start(ulong num_threads, ushort portno, ushort ws_portno, fd_we
   if (ws->daemon == NULL)
     return -1;
 
-  for (uint i = 0; i < sizeof(CLIENT_SOCKS) / sizeof(CLIENT_SOCKS[0]); ++i)
-    CLIENT_SOCKS[i] = MHD_INVALID_SOCKET;
   ws->ws_daemon = MHD_start_daemon(MHD_ALLOW_UPGRADE | MHD_USE_AUTO_INTERNAL_THREAD,
                                    ws_portno, NULL, NULL, &ahc_cb, cb_arg,
                                    MHD_OPTION_THREAD_POOL_SIZE, (unsigned int) 1,
