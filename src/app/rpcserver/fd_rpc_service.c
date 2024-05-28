@@ -1686,8 +1686,144 @@ fd_webserver_method_generic(struct fd_web_replier* replier, struct json_values* 
   fd_web_replier_done(replier);
 }
 
+static int
+ws_method_accountSubscribe(fd_websocket_ctx_t * wsctx, struct json_values * values, fd_rpc_ctx_t * ctx, fd_textstream_t * ts) {
+  FD_METHOD_SCRATCH_BEGIN( 11<<20 ) {
+    // Path to argument
+    static const uint PATH[3] = {
+      (JSON_TOKEN_LBRACE<<16) | KEYW_JSON_PARAMS,
+      (JSON_TOKEN_LBRACKET<<16) | 0,
+      (JSON_TOKEN_STRING<<16)
+    };
+    ulong arg_sz = 0;
+    const void* arg = json_get_value(values, PATH, 3, &arg_sz);
+    if (arg == NULL) {
+      fd_web_ws_error(wsctx, "getAccountInfo requires a string as first parameter");
+      return 0;
+    }
+
+    fd_pubkey_t acct;
+    fd_base58_decode_32((const char *)arg, acct.uc);
+    ulong val_sz;
+    void * val = read_account(ctx, &acct, fd_scratch_virtual(), &val_sz);
+    if (val == NULL) {
+      fd_textstream_sprintf(ts, "{\"jsonrpc\":\"2.0\",\"result\":{\"context\":{\"apiVersion\":\"" API_VERSION "\",\"slot\":%lu},\"value\":null},\"id\":%lu}" CRLF,
+                            ctx->blockstore->smr, ctx->call_id);
+      return 0;
+    }
+
+    fd_account_meta_t * metadata = (fd_account_meta_t *)val;
+    if (val_sz < metadata->hlen) {
+      fd_web_ws_error(wsctx, "failed to load account data for %s", (const char*)arg);
+      return 0;
+    }
+    val = (char*)val + metadata->hlen;
+    val_sz = val_sz - metadata->hlen;
+    if (val_sz > metadata->dlen)
+      val_sz = metadata->dlen;
+
+    static const uint PATH2[4] = {
+      (JSON_TOKEN_LBRACE<<16) | KEYW_JSON_PARAMS,
+      (JSON_TOKEN_LBRACKET<<16) | 1,
+      (JSON_TOKEN_LBRACE<<16) | KEYW_JSON_ENCODING,
+      (JSON_TOKEN_STRING<<16)
+    };
+    ulong enc_str_sz = 0;
+    const void* enc_str = json_get_value(values, PATH2, 4, &enc_str_sz);
+    enum { ENC_BASE58, ENC_BASE64, ENC_BASE64_ZSTD, ENC_JSON } enc;
+    if (enc_str == NULL || MATCH_STRING(enc_str, enc_str_sz, "base58"))
+      enc = ENC_BASE58;
+    else if (MATCH_STRING(enc_str, enc_str_sz, "base64"))
+      enc = ENC_BASE64;
+    else if (MATCH_STRING(enc_str, enc_str_sz, "base64+zstd"))
+      enc = ENC_BASE64_ZSTD;
+    else if (MATCH_STRING(enc_str, enc_str_sz, "jsonParsed"))
+      enc = ENC_JSON;
+    else {
+      fd_web_ws_error(wsctx, "invalid data encoding %s", (const char*)enc_str);
+      return 0;
+    }
+
+    static const uint PATH3[4] = {
+      (JSON_TOKEN_LBRACE<<16) | KEYW_JSON_PARAMS,
+      (JSON_TOKEN_LBRACKET<<16) | 2,
+      (JSON_TOKEN_LBRACE<<16) | KEYW_JSON_LENGTH,
+      (JSON_TOKEN_INTEGER<<16)
+    };
+    static const uint PATH4[4] = {
+      (JSON_TOKEN_LBRACE<<16) | KEYW_JSON_PARAMS,
+      (JSON_TOKEN_LBRACKET<<16) | 2,
+      (JSON_TOKEN_LBRACE<<16) | KEYW_JSON_OFFSET,
+      (JSON_TOKEN_INTEGER<<16)
+    };
+    ulong len_sz = 0;
+    const void* len_ptr = json_get_value(values, PATH3, 4, &len_sz);
+    ulong off_sz = 0;
+    const void* off_ptr = json_get_value(values, PATH4, 4, &off_sz);
+    if (len_ptr && off_ptr) {
+      if (enc == ENC_JSON) {
+        fd_web_ws_error(wsctx, "cannot use jsonParsed encoding with slice");
+        return 0;
+      }
+      long len = *(long*)len_ptr;
+      long off = *(long*)off_ptr;
+      if (off < 0 || (ulong)off >= val_sz) {
+        val = NULL;
+        val_sz = 0;
+      } else {
+        val = (char*)val + (ulong)off;
+        val_sz = val_sz - (ulong)off;
+      }
+      if (len < 0) {
+        val = NULL;
+        val_sz = 0;
+      } else if ((ulong)len < val_sz)
+        val_sz = (ulong)len;
+    }
+
+    fd_textstream_sprintf(ts, "{\"jsonrpc\":\"2.0\",\"result\":{\"context\":{\"apiVersion\":\"" API_VERSION "\",\"slot\":%lu},\"value\":{\"data\":[\"",
+                          ctx->blockstore->smr);
+
+    if (val_sz) {
+      switch (enc) {
+      case ENC_BASE58:
+        if (fd_textstream_encode_base58(ts, val, val_sz)) {
+          fd_web_ws_error(wsctx, "failed to encode data in base58");
+          return 0;
+        }
+        break;
+      case ENC_BASE64:
+        if (fd_textstream_encode_base64(ts, val, val_sz)) {
+          fd_web_ws_error(wsctx, "failed to encode data in base64");
+          return 0;
+        }
+        break;
+      case ENC_BASE64_ZSTD:
+        break;
+      case ENC_JSON:
+        break;
+      }
+    }
+
+    char owner[50];
+    fd_base58_encode_32((uchar*)metadata->info.owner, 0, owner);
+    fd_textstream_sprintf(ts, "\",\"%s\"],\"executable\":%s,\"lamports\":%lu,\"owner\":\"%s\",\"rentEpoch\":%lu,\"space\":%lu}},\"id\":%lu}" CRLF,
+                          (const char*)enc_str,
+                          (metadata->info.executable ? "true" : "false"),
+                          metadata->info.lamports,
+                          owner,
+                          metadata->info.rent_epoch,
+                          val_sz,
+                          ctx->call_id);
+  } FD_METHOD_SCRATCH_END;
+
+  return 1;
+}
+
 int
-fd_webserver_ws_subscribe(struct json_values* values, fd_websocket_ctx_t * ctx) {
+fd_webserver_ws_subscribe(struct json_values* values, fd_websocket_ctx_t * wsctx, void * cb_arg) {
+  fd_rpc_ctx_t ctx = *( fd_rpc_ctx_t *)cb_arg;
+
   static const uint PATH[2] = {
     (JSON_TOKEN_LBRACE<<16) | KEYW_JSON_JSONRPC,
     (JSON_TOKEN_STRING<<16)
@@ -1695,11 +1831,11 @@ fd_webserver_ws_subscribe(struct json_values* values, fd_websocket_ctx_t * ctx) 
   ulong arg_sz = 0;
   const void* arg = json_get_value(values, PATH, 2, &arg_sz);
   if (arg == NULL) {
-    fd_web_ws_error( ctx, "missing jsonrpc member" );
+    fd_web_ws_error( wsctx, "missing jsonrpc member" );
     return 0;
   }
   if (!MATCH_STRING(arg, arg_sz, "2.0")) {
-    fd_web_ws_error( ctx, "jsonrpc value must be 2.0" );
+    fd_web_ws_error( wsctx, "jsonrpc value must be 2.0" );
     return 0;
   }
 
@@ -1710,11 +1846,10 @@ fd_webserver_ws_subscribe(struct json_values* values, fd_websocket_ctx_t * ctx) 
   arg_sz = 0;
   arg = json_get_value(values, PATH3, 2, &arg_sz);
   if (arg == NULL) {
-    fd_web_ws_error( ctx, "missing id member" );
+    fd_web_ws_error( wsctx, "missing id member" );
     return 0;
   }
-  long call_id = *(long*)arg;
-  (void)call_id;
+  ctx.call_id = *(long*)arg;
 
   static const uint PATH2[2] = {
     (JSON_TOKEN_LBRACE<<16) | KEYW_JSON_METHOD,
@@ -1723,17 +1858,26 @@ fd_webserver_ws_subscribe(struct json_values* values, fd_websocket_ctx_t * ctx) 
   arg_sz = 0;
   arg = json_get_value(values, PATH2, 2, &arg_sz);
   if (arg == NULL) {
-    fd_web_ws_error( ctx, "missing method member" );
+    fd_web_ws_error( wsctx, "missing method member" );
     return 0;
   }
   long meth_id = fd_webserver_json_keyword((const char*)arg, arg_sz);
 
+  fd_textstream_t ts;
+  fd_textstream_new(&ts, fd_libc_alloc_virtual(), 11UL<<21);
+
   switch (meth_id) {
   case KEYW_WS_METHOD_ACCOUNTSUBSCRIBE:
-    return 1;
+    if (ws_method_accountSubscribe(wsctx, values, &ctx, &ts)) {
+      fd_web_ws_reply( wsctx, &ts );
+      fd_textstream_destroy(&ts);
+      return 1;
+    }
+    return 0;
   }
 
-  fd_web_ws_error( ctx, "unknown websocket method" );
+  fd_textstream_destroy(&ts);
+  fd_web_ws_error( wsctx, "unknown websocket method: %s", (const char*)arg );
   return 0;
 }
 

@@ -31,7 +31,9 @@ fd_textstream_t * fd_web_replier_textstream(struct fd_web_replier* replier);
 void fd_web_replier_done(struct fd_web_replier* replier);
 
 typedef struct fd_websocket_ctx fd_websocket_ctx_t;
-int fd_webserver_ws_subscribe(struct json_values* values, fd_websocket_ctx_t * ctx);
+int fd_webserver_ws_subscribe(struct json_values* values, fd_websocket_ctx_t * ctx, void * cb_arg);
+
+void fd_web_ws_reply( fd_websocket_ctx_t * ctx, fd_textstream_t * ts);
 
 void fd_web_replier_error( struct fd_web_replier* replier, const char* format, ... )
   __attribute__ ((format (printf, 2, 3)));

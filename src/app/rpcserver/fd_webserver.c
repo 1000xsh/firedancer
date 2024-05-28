@@ -255,11 +255,12 @@ fd_webserver_ws_request( fd_websocket_ctx_t * ctx, char const * msg, ulong msgle
   int ret = json_values_parse(&lex, &values, &path);
   if (ret) {
     json_values_printout(&values);
-    ret = fd_webserver_ws_subscribe(&values, ctx);
+    ret = fd_webserver_ws_subscribe(&values, ctx, ctx->ws->cb_arg);
   } else {
     ulong sz;
     const char* text = json_lex_get_text(&lex, &sz);
     FD_LOG_WARNING(( "json parsing error: %s", text ));
+    fd_web_ws_simple_error( ctx, text, (uint)sz );
   }
   json_values_delete(&values);
   json_lex_state_delete(&lex);
@@ -296,6 +297,20 @@ void fd_web_ws_simple_error( fd_websocket_ctx_t * ctx, const char* text, uint te
   }
 
   fd_textstream_destroy(&ts);
+}
+
+void fd_web_ws_reply( fd_websocket_ctx_t * ctx, fd_textstream_t * ts) {
+  char buf[2048];
+  ulong sz = fd_textstream_total_size(ts);
+  if ( sz <= sizeof(buf) ) {
+    fd_textstream_get_output( ts, buf );
+    ws_send_frame( ctx->sock, buf, sz );
+  } else {
+    char * buf2 = malloc(sz);
+    fd_textstream_get_output( ts, buf2 );
+    ws_send_frame( ctx->sock, buf2, sz );
+    free( buf2 );
+  }
 }
 
 int fd_webserver_start(ulong num_threads, ushort portno, ushort ws_portno, fd_webserver_t * ws, void * cb_arg) {
