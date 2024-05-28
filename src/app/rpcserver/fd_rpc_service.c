@@ -1704,3 +1704,8 @@ fd_rpc_stop_service(fd_rpc_ctx_t * ctx) {
     FD_LOG_ERR(("fd_webserver_stop failed"));
   free(ctx);
 }
+
+void
+fd_rpc_ws_poll(fd_rpc_ctx_t * ctx) {
+  fd_webserver_ws_poll(&ctx->ws);
+}

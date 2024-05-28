@@ -23,4 +23,6 @@ void fd_rpc_start_service(fd_rpcserver_args_t * args, fd_rpc_ctx_t ** ctx);
 
 void fd_rpc_stop_service(fd_rpc_ctx_t * ctx);
 
+void fd_rpc_ws_poll(fd_rpc_ctx_t * ctx);
+
 #endif /* HEADER_fd_src_flamenco_rpc_fd_rpc_service_h */

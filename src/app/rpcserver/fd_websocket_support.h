@@ -34,6 +34,7 @@ struct WsData
 {
   struct MHD_UpgradeResponseHandle *urh;
   MHD_socket sock;
+  fd_webserver_t * ws;
 };
 
 static enum MHD_Result
@@ -273,10 +274,9 @@ ws_receive_frame (unsigned char *frame, ssize_t *length, int *type)
   return msg;
 }
 
-static void *
-run_usock (void *cls)
-{
-  struct WsData *ws = cls;
+static void
+epoll_selected( struct epoll_event * event ) {
+  struct WsData * ws = event->data.ptr;
   struct MHD_UpgradeResponseHandle *urh = ws->urh;
   unsigned char buf[2048];
   unsigned char *msg;
@@ -284,9 +284,7 @@ run_usock (void *cls)
   ssize_t got;
   int type;
 
-  make_blocking (ws->sock);
-  while (1)
-  {
+  do {
     got = recv (ws->sock, (void *) buf, sizeof (buf), 0);
     if (0 >= got)
     {
@@ -320,10 +318,7 @@ run_usock (void *cls)
       else
         sent = -1;
       free (msg);
-      if (-1 == sent)
-      {
-        break;
-      }
+      if (-1 == sent) { break; } else { return; }
     }
     else
     {
@@ -333,10 +328,11 @@ run_usock (void *cls)
         break;
       }
     }
-  }
-  free (ws);
+  } while (0);
+
+  epoll_ctl(ws->ws->ws_epoll_fd, EPOLL_CTL_DEL, ws->sock, NULL);
   MHD_upgrade_action (urh, MHD_UPGRADE_ACTION_CLOSE);
-  return NULL;
+  free (ws);
 }
 
 static void
@@ -344,27 +340,27 @@ uh_cb (void *cls, struct MHD_Connection *con, void *req_cls,
        const char *extra_in, size_t extra_in_size, MHD_socket sock,
        struct MHD_UpgradeResponseHandle *urh)
 {
-  struct WsData *ws;
-  pthread_t pt;
+  fd_webserver_t * ws = (fd_webserver_t *)cls;
 
-  (void) cls;            /* Unused. Silent compiler warning. */
   (void) con;            /* Unused. Silent compiler warning. */
   (void) req_cls;        /* Unused. Silent compiler warning. */
   (void) extra_in;       /* Unused. Silent compiler warning. */
   (void) extra_in_size;  /* Unused. Silent compiler warning. */
 
-  ws = malloc (sizeof (struct WsData));
-  if (NULL == ws)
-    abort ();
-  memset (ws, 0, sizeof (struct WsData));
-  ws->sock = sock;
-  ws->urh = urh;
-  if (0 != pthread_create (&pt, NULL, &run_usock, ws))
-    abort ();
-  /* Note that by detaching like this we make it impossible to ensure
-     a clean shutdown, as the we stop the daemon even if a worker thread
-     is still running. Alas, this is a simple example... */
-  pthread_detach (pt);
+  struct WsData * wsd = malloc (sizeof (struct WsData));
+  memset (wsd, 0, sizeof (struct WsData));
+  wsd->sock = sock;
+  wsd->urh = urh;
+  wsd->ws = ws;
+
+  make_blocking (sock);
+
+  struct epoll_event event;
+  event.events = EPOLLIN;
+  event.data.ptr = wsd;
+  if (epoll_ctl(ws->ws_epoll_fd, EPOLL_CTL_ADD, sock, &event)) {
+    FD_LOG_ERR(("epoll_ctl failed: %s", strerror(errno) ));
+  }
 }
 
 static enum MHD_Result
@@ -380,7 +376,8 @@ ahc_cb (void *cls, struct MHD_Connection *con, const char *url,
   enum MHD_Result ret;
   size_t key_size;
 
-  (void) cls;               /* Unused. Silent compiler warning. */
+  fd_webserver_t * ws = (fd_webserver_t *)cls;
+
   (void) url;               /* Unused. Silent compiler warning. */
   (void) upload_data;       /* Unused. Silent compiler warning. */
   (void) upload_data_size;  /* Unused. Silent compiler warning. */
@@ -414,8 +411,7 @@ ahc_cb (void *cls, struct MHD_Connection *con, const char *url,
   }
   ret = MHD_lookup_connection_value_n (con, MHD_HEADER_KIND,
                                        MHD_HTTP_HEADER_SEC_WEBSOCKET_KEY,
-                                       strlen (
-                                         MHD_HTTP_HEADER_SEC_WEBSOCKET_KEY),
+                                       strlen (MHD_HTTP_HEADER_SEC_WEBSOCKET_KEY),
                                        &ws_key_header, &key_size);
   if ((MHD_NO == ret) || (key_size != WS_KEY_LEN))
   {
@@ -427,7 +423,7 @@ ahc_cb (void *cls, struct MHD_Connection *con, const char *url,
   {
     return ret;
   }
-  res = MHD_create_response_for_upgrade (&uh_cb, NULL);
+  res = MHD_create_response_for_upgrade (&uh_cb, ws);
   if (MHD_YES !=
       MHD_add_response_header (res, MHD_HTTP_HEADER_SEC_WEBSOCKET_ACCEPT,
                                ws_ac_value))

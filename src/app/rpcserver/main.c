@@ -100,33 +100,40 @@ int main( int argc, char ** argv ) {
   ulong depth  = fd_mcache_depth( mcache );
   ulong seq_expect = fd_mcache_seq0( mcache );
   while( !stopflag ) {
-    fd_frag_meta_t const * mline = mcache + fd_mcache_line_idx( seq_expect, depth );
+    while( 1 ) {
+      fd_frag_meta_t const * mline = mcache + fd_mcache_line_idx( seq_expect, depth );
 
-    ulong seq_found = fd_frag_meta_seq_query( mline );
-    long  diff      = fd_seq_diff( seq_found, seq_expect );
-    if( FD_UNLIKELY( diff ) ) { /* caught up or overrun, optimize for expected sequence number ready */
-      if( FD_UNLIKELY( diff>0L ) ) {
+      ulong seq_found = fd_frag_meta_seq_query( mline );
+      long  diff      = fd_seq_diff( seq_found, seq_expect );
+      if( FD_UNLIKELY( diff ) ) { /* caught up or overrun, optimize for expected sequence number ready */
+        if( FD_UNLIKELY( diff>0L ) ) {
+          FD_LOG_NOTICE(( "overrun: seq=%lu seq_found=%lu diff=%ld", seq_expect, seq_found, diff ));
+          seq_expect = seq_found;
+        } else {
+          /* caught up */
+          break;
+        }
+        continue;
+      }
+
+      fd_replay_notif_msg_t msg;
+      FD_TEST( mline->sz == sizeof(msg) );
+      fd_memcpy(&msg, fd_chunk_to_laddr( mcache_wksp, mline->chunk ), sizeof(msg));
+
+      seq_found = fd_frag_meta_seq_query( mline );
+      diff      = fd_seq_diff( seq_found, seq_expect );
+      if( FD_UNLIKELY( diff ) ) { /* overrun, optimize for expected sequence number ready */
         FD_LOG_NOTICE(( "overrun: seq=%lu seq_found=%lu diff=%ld", seq_expect, seq_found, diff ));
         seq_expect = seq_found;
+        continue;
       }
-      continue;
+
+      FD_LOG_NOTICE(("replay_notif: seq=%lu cnt=%u slot=%lu", seq_found, msg.acct_saved.acct_id_cnt, msg.acct_saved.funk_xid.ul[0]));
+
+      ++seq_expect;
     }
 
-    fd_replay_notif_msg_t msg;
-    FD_TEST( mline->sz == sizeof(msg) );
-    fd_memcpy(&msg, fd_chunk_to_laddr( mcache_wksp, mline->chunk ), sizeof(msg));
-
-    seq_found = fd_frag_meta_seq_query( mline );
-    diff      = fd_seq_diff( seq_found, seq_expect );
-    if( FD_UNLIKELY( diff ) ) { /* overrun, optimize for expected sequence number ready */
-      FD_LOG_NOTICE(( "overrun: seq=%lu seq_found=%lu diff=%ld", seq_expect, seq_found, diff ));
-      seq_expect = seq_found;
-      continue;
-    }
-
-    FD_LOG_NOTICE(("replay_notif: seq=%lu cnt=%u slot=%lu", seq_found, msg.acct_saved.acct_id_cnt, msg.acct_saved.funk_xid.ul[0]));
-
-    ++seq_expect;
+    fd_rpc_ws_poll( ctx );
   }
 
   fd_rpc_stop_service( ctx );

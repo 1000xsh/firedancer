@@ -5,14 +5,18 @@
 #include "../../util/textstream/fd_textstream.h"
 
 struct fd_webserver {
-  struct MHD_Daemon* daemon;
-  struct MHD_Daemon* ws_daemon;
+  void * cb_arg;
+  struct MHD_Daemon * daemon;
+  struct MHD_Daemon * ws_daemon;
+  int ws_epoll_fd;
 };
 typedef struct fd_webserver fd_webserver_t;
 
 int fd_webserver_start(ulong num_threads, ushort portno, ushort ws_portno, fd_webserver_t * ws, void * cb_arg);
 
 int fd_webserver_stop(fd_webserver_t * ws);
+
+void fd_webserver_ws_poll(fd_webserver_t * ws);
 
 #ifndef KEYW_UNKNOWN
 #define KEYW_UNKNOWN -1L

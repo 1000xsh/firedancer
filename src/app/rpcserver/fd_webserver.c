@@ -9,6 +9,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <pthread.h>
+#include <sys/epoll.h>
 #include <microhttpd.h>
 #include "fd_methods.h"
 #include "fd_webserver.h"
@@ -360,6 +361,8 @@ static enum MHD_Result handler(void* cls,
   (void) url;               /* Unused. Silent compiler warning. */
   (void) version;           /* Unused. Silent compiler warning. */
 
+  fd_webserver_t * ws = (fd_webserver_t *)cls;
+
   if (0 != strcmp (method, "POST"))
     return MHD_NO;              /* unexpected method */
 
@@ -375,7 +378,7 @@ static enum MHD_Result handler(void* cls,
     replier->upload_data_size = sz;
     json_lex_state_t lex;
     json_lex_state_new(&lex, upload_data, sz);
-    json_parse_root(replier, &lex, cls);
+    json_parse_root(replier, &lex, ws->cb_arg);
     json_lex_state_delete(&lex);
     *upload_data_size = 0;
   }
@@ -393,12 +396,14 @@ static enum MHD_Result handler(void* cls,
 #include "fd_websocket_support.h"
 
 int fd_webserver_start(ulong num_threads, ushort portno, ushort ws_portno, fd_webserver_t * ws, void * cb_arg) {
+  ws->cb_arg = cb_arg;
+
   ws->daemon = MHD_start_daemon(
     MHD_USE_INTERNAL_POLLING_THREAD
       | MHD_USE_SUPPRESS_DATE_NO_CLOCK
       | MHD_USE_AUTO | MHD_USE_TURBO,
     portno,
-    NULL, NULL, &handler, cb_arg,
+    NULL, NULL, &handler, ws,
     MHD_OPTION_CONNECTION_TIMEOUT, (unsigned int) 120,
     MHD_OPTION_THREAD_POOL_SIZE, (unsigned int) num_threads,
     MHD_OPTION_NOTIFY_COMPLETED, &completed_cb, ws,
@@ -408,11 +413,15 @@ int fd_webserver_start(ulong num_threads, ushort portno, ushort ws_portno, fd_we
     return -1;
 
   ws->ws_daemon = MHD_start_daemon(MHD_ALLOW_UPGRADE | MHD_USE_AUTO_INTERNAL_THREAD,
-                                   ws_portno, NULL, NULL, &ahc_cb, cb_arg,
+                                   ws_portno, NULL, NULL, &ahc_cb, ws,
                                    MHD_OPTION_THREAD_POOL_SIZE, (unsigned int) 1,
                                    MHD_OPTION_CONNECTION_LIMIT, (unsigned int) 1000,
                                    MHD_OPTION_END);
   if (ws->ws_daemon == NULL)
+    return -1;
+
+  ws->ws_epoll_fd = epoll_create1(0);
+  if( ws->ws_epoll_fd == -1 )
     return -1;
 
   return 0;
@@ -421,5 +430,17 @@ int fd_webserver_start(ulong num_threads, ushort portno, ushort ws_portno, fd_we
 int fd_webserver_stop(fd_webserver_t * ws) {
   MHD_stop_daemon(ws->daemon);
   MHD_stop_daemon(ws->ws_daemon);
+  close( ws->ws_epoll_fd );
   return 0;
+}
+
+void fd_webserver_ws_poll(fd_webserver_t * ws) {
+  struct epoll_event events[16];
+  int cnt = epoll_wait( ws->ws_epoll_fd, events, 16, 0 );
+  if( cnt < 0 ) {
+    FD_LOG_ERR(( "epoll_wait failed: %s", strerror(errno) ));
+  }
+  for(int i = 0; i < cnt; ++i) {
+    epoll_selected(events + i);
+  }
 }
