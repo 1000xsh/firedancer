@@ -503,6 +503,13 @@ fd_quic_init( fd_quic_t * quic ) {
 
   fd_rng_new( state->_rng, 0UL, 0UL );
 
+  /* use rng to generate secret bytes for future RETRY token generation */
+  fd_rng_t * rng = fd_rng_join( state->_rng );
+  for( ulong j = 0; j < FD_QUIC_RETRY_SECRET_SZ; ++j ) {
+    state->retry_secret[j] = fd_rng_uchar( rng );
+  }
+  fd_rng_leave( rng );
+
   /* Initialize crypto */
 
   fd_quic_crypto_ctx_init( state->crypto_ctx );
@@ -1195,9 +1202,12 @@ fd_quic_send_retry( fd_quic_t *                  quic,
   uint saddr = 0;
   memcpy( &saddr, pkt->ip4->saddr_c, 4 );
 
+  fd_quic_state_t * state = fd_quic_get_state( quic );
+
   /* Retry token */
   ulong now = fd_quic_get_state( quic )->now;
   int   rc  = fd_quic_retry_token_encrypt(
+      state->retry_secret,
       orig_dst_conn_id,
       now,
       new_conn_id,
@@ -1491,7 +1501,8 @@ fd_quic_handle_v1_initial( fd_quic_t *               quic,
 
         fd_quic_conn_id_t orig_dst_conn_id;
         ulong issued = 0UL;
-        if( FD_UNLIKELY( fd_quic_retry_token_decrypt( (uchar*)initial->token,
+        if( FD_UNLIKELY( fd_quic_retry_token_decrypt( state->retry_secret,
+                                                      (uchar*)initial->token,
                                                       retry_src_conn_id,
                                                       dst_ip_addr,
                                                       dst_udp_port,
