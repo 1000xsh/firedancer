@@ -448,7 +448,6 @@ _fd_sbpf_elf_peek( fd_sbpf_elf_info_t * info,
 
   /* ELFs must have a file header */
   REQUIRE( elf_sz>sizeof(fd_elf64_ehdr) );
-  REQUIRE( fd_ulong_is_aligned( (ulong) bin, 8UL ) ); // https://github.com/solana-labs/rbpf/blob/v0.8.0/src/elf_parser/mod.rs#L99
 
   /* Reject overlong ELFs (using uint addressing internally).
      This is well beyond Solana's max account size of 10 MB. */
@@ -545,6 +544,12 @@ fd_sbpf_program_new( void *                     prog_mem,
     FD_LOG_WARNING(( "NULL rodata" ));
     return NULL;
   }
+
+  /* https://github.com/solana-labs/rbpf/blob/v0.8.0/src/elf_parser/mod.rs#L99 */
+  if( FD_UNLIKELY( !fd_ulong_is_aligned( (ulong) rodata, 8UL ) ) ){
+    FD_LOG_WARNING(( "rodata is not 8-byte aligned" ));
+    return NULL;
+  } 
 
   /* Initialize program struct */
 
