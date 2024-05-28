@@ -471,9 +471,9 @@ uh_cb (void *cls, struct MHD_Connection *con, void *req_cls,
 
 
 static enum MHD_Result
-ws_handler (void *cls, struct MHD_Connection *con, const char *url,
-            const char *method, const char *version, const char *upload_data,
-            size_t *upload_data_size, void **req_cls)
+ahc_cb (void *cls, struct MHD_Connection *con, const char *url,
+        const char *method, const char *version, const char *upload_data,
+        size_t *upload_data_size, void **req_cls)
 {
   struct MHD_Response *res;
   const char *upg_header;
