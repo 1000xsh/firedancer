@@ -1,10 +1,14 @@
 #include "../../util/fd_util.h"
+#include "../../ballet/base64/fd_base64.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
 #include <errno.h>
 #include <time.h>
 #include <signal.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <pthread.h>
 #include <microhttpd.h>
 #include "fd_methods.h"
 #include "fd_webserver.h"
@@ -386,11 +390,13 @@ static enum MHD_Result handler(void* cls,
   return MHD_YES;
 }
 
-int fd_webserver_start(ulong num_threads, ushort portno, fd_webserver_t * ws, void * cb_arg) {
+#include "fd_websocket_support.h"
+
+int fd_webserver_start(ulong num_threads, ushort portno, ushort ws_portno, fd_webserver_t * ws, void * cb_arg) {
   ws->daemon = MHD_start_daemon(
     MHD_USE_INTERNAL_POLLING_THREAD
       | MHD_USE_SUPPRESS_DATE_NO_CLOCK
-      | MHD_USE_EPOLL | MHD_USE_TURBO,
+      | MHD_USE_AUTO | MHD_USE_TURBO,
     portno,
     NULL, NULL, &handler, cb_arg,
     MHD_OPTION_CONNECTION_TIMEOUT, (unsigned int) 120,
@@ -400,10 +406,21 @@ int fd_webserver_start(ulong num_threads, ushort portno, fd_webserver_t * ws, vo
     MHD_OPTION_END);
   if (ws->daemon == NULL)
     return -1;
+
+  ws->ws_daemon = MHD_start_daemon(MHD_ALLOW_UPGRADE | MHD_USE_AUTO_INTERNAL_THREAD |
+                                   MHD_USE_SUPPRESS_DATE_NO_CLOCK | MHD_USE_AUTO | MHD_USE_TURBO,
+                                   ws_portno, NULL, NULL, &ws_handler, cb_arg,
+                                   MHD_OPTION_THREAD_POOL_SIZE, (unsigned int) 1,
+                                   MHD_OPTION_CONNECTION_LIMIT, (unsigned int) 1000,
+                                   MHD_OPTION_END);
+  if (ws->ws_daemon == NULL)
+    return -1;
+
   return 0;
 }
 
 int fd_webserver_stop(fd_webserver_t * ws) {
   MHD_stop_daemon(ws->daemon);
+  MHD_stop_daemon(ws->ws_daemon);
   return 0;
 }

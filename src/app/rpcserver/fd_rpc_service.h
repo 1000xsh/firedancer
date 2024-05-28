@@ -13,6 +13,7 @@ struct fd_rpcserver_args {
   fd_frag_meta_t *  rep_notify;
   ulong             num_threads;
   ushort            port;
+  ushort            ws_port;
 };
 typedef struct fd_rpcserver_args fd_rpcserver_args_t;
 

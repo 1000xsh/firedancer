@@ -68,6 +68,7 @@ init_args( int * argc, char *** argv, fd_rpcserver_args_t * args ) {
   args->num_threads = fd_env_strip_cmdline_ulong( argc, argv, "--num-threads", NULL, 10 );
 
   args->port = (ushort)fd_env_strip_cmdline_ulong( argc, argv, "--port", NULL, 8899 );
+  args->ws_port = (ushort)fd_env_strip_cmdline_ulong( argc, argv, "--ws-port", NULL, 8900 );
 }
 
 static int stopflag = 0;
@@ -117,7 +118,7 @@ int main( int argc, char ** argv ) {
 
     seq_found = fd_frag_meta_seq_query( mline );
     diff      = fd_seq_diff( seq_found, seq_expect );
-    if( FD_UNLIKELY( diff ) ) { /* caught up or overrun, optimize for expected sequence number ready */
+    if( FD_UNLIKELY( diff ) ) { /* overrun, optimize for expected sequence number ready */
       FD_LOG_NOTICE(( "overrun: seq=%lu seq_found=%lu diff=%ld", seq_expect, seq_found, diff ));
       seq_expect = seq_found;
       continue;
