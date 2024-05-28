@@ -30,13 +30,6 @@
 #define WS_OPCODE_CON_CLOSE_FRAME 8
 #define SHA1HashSize 20
 
-struct WsData
-{
-  struct MHD_UpgradeResponseHandle *urh;
-  MHD_socket sock;
-  fd_webserver_t * ws;
-};
-
 static enum MHD_Result
 is_websocket_request (struct MHD_Connection *con, const char *upg_header,
                       const char *con_header)
@@ -158,7 +151,7 @@ send_all (MHD_socket sock, const unsigned char *buf, size_t len)
   return off;
 }
 
-static ssize_t
+ssize_t
 ws_send_frame (MHD_socket sock, const char *msg, size_t length)
 {
   unsigned char *response;
@@ -276,52 +269,25 @@ ws_receive_frame (unsigned char *frame, ssize_t *length, int *type)
 
 static void
 epoll_selected( struct epoll_event * event ) {
-  struct WsData * ws = event->data.ptr;
+  fd_websocket_ctx_t * ws = event->data.ptr;
   struct MHD_UpgradeResponseHandle *urh = ws->urh;
   unsigned char buf[2048];
-  unsigned char *msg;
-  char *text;
-  ssize_t got;
-  int type;
 
   do {
-    got = recv (ws->sock, (void *) buf, sizeof (buf), 0);
-    if (0 >= got)
-    {
-      break;
-    }
-    msg = ws_receive_frame (buf, &got, &type);
-    if (NULL == msg)
-    {
-      break;
-    }
-    if (type == WS_OPCODE_TEXT_FRAME)
-    {
-      ssize_t sent;
-      int buf_size;
-      buf_size = snprintf (NULL, 0, "User#%d: %s", (int) ws->sock, msg);
-      if (0 < buf_size)
-      {
-        text = malloc ((size_t) buf_size + 1);
-        if (NULL != text)
-        {
-          if (snprintf (text, (size_t) buf_size + 1,
-                        "User#%d: %s", (int) ws->sock, msg) == buf_size)
-            sent = ws_send_frame (ws->sock, text, (size_t) buf_size);
-          else
-            sent = -1;
-          free (text);
-        }
-        else
-          sent = -1;
+    ssize_t got = recv (ws->sock, (void *) buf, sizeof (buf), 0);
+    if (0 >= got) break;
+    int type;
+    char * msg = (char *)ws_receive_frame (buf, &got, &type);
+    if (NULL == msg) break;
+    if (type == WS_OPCODE_TEXT_FRAME) {
+      if( !fd_webserver_ws_request( ws, msg, (ulong)got ) ) {
+        free( msg );
+        break;
       }
-      else
-        sent = -1;
-      free (msg);
-      if (-1 == sent) { break; } else { return; }
-    }
-    else
-    {
+      free( msg );
+      /* Happy path */
+      return;
+    } else {
       if (type == WS_OPCODE_CON_CLOSE_FRAME)
       {
         free (msg);
@@ -347,8 +313,8 @@ uh_cb (void *cls, struct MHD_Connection *con, void *req_cls,
   (void) extra_in;       /* Unused. Silent compiler warning. */
   (void) extra_in_size;  /* Unused. Silent compiler warning. */
 
-  struct WsData * wsd = malloc (sizeof (struct WsData));
-  memset (wsd, 0, sizeof (struct WsData));
+  fd_websocket_ctx_t * wsd = malloc (sizeof (fd_websocket_ctx_t));
+  memset (wsd, 0, sizeof (fd_websocket_ctx_t));
   wsd->sock = sock;
   wsd->urh = urh;
   wsd->ws = ws;

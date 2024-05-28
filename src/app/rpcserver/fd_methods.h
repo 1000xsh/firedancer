@@ -62,4 +62,7 @@ const void* json_get_value_multi(struct json_values* values, const uint* path, u
 // Dump the values and paths to stdout
 void json_values_printout(struct json_values* values);
 
+// Parse a block of json. Returns 1 on success.
+int json_values_parse(json_lex_state_t* lex, struct json_values* values, struct json_path* path);
+
 #endif /* HEADER_fd_src_tango_webserver_fd_methods_h */
