@@ -587,9 +587,9 @@ process_loader_upgradeable_instruction( fd_exec_instr_ctx_t * instr_ctx ) {
 
     /* https://github.com/anza-xyz/agave/blob/574bae8fefc0ed256b55340b9d87b7689bcdf222/programs/bpf_loader/src/lib.rs#L602-L608 */
     /* Create ProgramData account */
-    fd_pubkey_t derived_address[1];
-    uchar * seeds[1];
-    seeds[0] = (uchar *)new_program_id;
+    fd_pubkey_t derived_address[ 1UL ];
+    uchar * seeds[ 1UL ];
+    seeds[ 0UL ] = (uchar *)new_program_id;
     err = fd_pubkey_try_find_program_address( program_id, 1UL, seeds, derived_address );
     if( err ) {
       FD_LOG_WARNING(( "Failed to derive program address" ));
