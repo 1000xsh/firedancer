@@ -5,6 +5,7 @@
 #include "../../../ballet/sbpf/fd_sbpf_loader.h"
 #include "../sysvar/fd_sysvar_clock.h"
 #include "../sysvar/fd_sysvar_rent.h"
+#include "../sysvar/fd_sysvar_cache.h"
 #include "../../vm/fd_vm_syscalls.h"
 #include "../../vm/fd_vm_interp.h"
 #include "../../vm/fd_vm_disasm.h"
@@ -44,7 +45,7 @@ fd_bpf_loader_v3_is_executable( fd_exec_slot_ctx_t * slot_ctx,
   }
 
   fd_bincode_decode_ctx_t ctx = {
-    .data    = (uchar *)meta + meta->hlen,
+    .data    = (uchar *)meta     + meta->hlen,
     .dataend = (char *) ctx.data + meta->dlen,
     .valloc  = slot_ctx->valloc,
   };
@@ -59,7 +60,7 @@ fd_bpf_loader_v3_is_executable( fd_exec_slot_ctx_t * slot_ctx,
     return FD_EXECUTOR_INSTR_ERR_INVALID_ACC_DATA;
   }
 
-  /* Check if programdata is closed */
+  /* Check if programdata account exists */
   fd_account_meta_t const * programdata_meta = 
     (fd_account_meta_t const *)fd_acc_mgr_view_raw( slot_ctx->acc_mgr, slot_ctx->funk_txn, 
                                                     (fd_pubkey_t *) &loader_state.inner.program.programdata_address, NULL, &err );
@@ -73,6 +74,7 @@ fd_bpf_loader_v3_is_executable( fd_exec_slot_ctx_t * slot_ctx,
   return 0;
 }
 
+/* TODO: This can be merged with the other bpf loader state decode function */
 fd_account_meta_t const *
 read_bpf_upgradeable_loader_state_for_program( fd_exec_txn_ctx_t *                 txn_ctx,
                                                uchar                               program_id,
@@ -109,14 +111,14 @@ deploy_program( fd_exec_instr_ctx_t * instr_ctx,
   FD_SCRATCH_SCOPE_BEGIN {
     fd_sbpf_syscalls_t * syscalls = fd_sbpf_syscalls_new( fd_scratch_alloc( fd_sbpf_syscalls_align(),
                                                                             fd_sbpf_syscalls_footprint() ) );
-    if( syscalls==NULL ) {
+    if( !syscalls ) {
       FD_LOG_WARNING(( "Failed to register syscalls" ));
       return FD_EXECUTOR_INSTR_ERR_PROGRAM_ENVIRONMENT_SETUP_FAILURE;
     }
     fd_vm_syscall_register_all( syscalls );
 
     /* Load executable */
-    fd_sbpf_elf_info_t  _elf_info[1];
+    fd_sbpf_elf_info_t  _elf_info[ 1UL ];
     fd_sbpf_elf_info_t * elf_info = fd_sbpf_elf_peek( _elf_info, programdata, programdata_size );
     if( FD_UNLIKELY( !elf_info ) ) {
       FD_LOG_WARNING(( "Elf info failing" ));
@@ -194,8 +196,8 @@ write_program_data( fd_borrowed_account_t * program,
 /* https://github.com/anza-xyz/agave/blob/574bae8fefc0ed256b55340b9d87b7689bcdf222/sdk/src/transaction_context.rs#L968-L972 */
 int 
 fd_bpf_loader_v3_program_read_state( fd_exec_instr_ctx_t *               instr_ctx,
-                          fd_borrowed_account_t *             borrowed_acc, 
-                          fd_bpf_upgradeable_loader_state_t * state ) {
+                                     fd_borrowed_account_t *             borrowed_acc, 
+                                     fd_bpf_upgradeable_loader_state_t * state ) {
     /* Check to see if the buffer account is already initialized */
     fd_bincode_decode_ctx_t ctx = {
       .data    = borrowed_acc->const_data,
@@ -218,7 +220,7 @@ fd_bpf_loader_v3_program_write_state( fd_exec_instr_ctx_t *               instr_
                                       fd_bpf_upgradeable_loader_state_t * state ) {
   ulong state_size = fd_bpf_upgradeable_loader_state_size( state );
 
-  if ( state_size>borrowed_acc->meta->dlen ) {
+  if( state_size>borrowed_acc->meta->dlen ) {
     return FD_EXECUTOR_INSTR_ERR_ACC_DATA_TOO_SMALL;
   }
 
@@ -242,10 +244,10 @@ int
 common_close_account( fd_pubkey_t * authority_address, 
                       fd_exec_instr_ctx_t * instr_ctx,
                       fd_bpf_upgradeable_loader_state_t * state ) {
-  uchar const * instr_acc_idxs = instr_ctx->instr->acct_txn_idxs;
-  fd_pubkey_t const * txn_accs = instr_ctx->txn_ctx->accounts;
+  uchar const *       instr_acc_idxs = instr_ctx->instr->acct_txn_idxs;
+  fd_pubkey_t const * txn_accs       = instr_ctx->txn_ctx->accounts;
 
-  if( authority_address==NULL ) {
+  if( !authority_address ) {
     FD_LOG_WARNING(( "Account is immutable" ));
     return FD_EXECUTOR_INSTR_ERR_ACC_IMMUTABLE;
   }
@@ -305,6 +307,7 @@ execute( fd_exec_instr_ctx_t * instr_ctx, fd_sbpf_validated_program_t * prog ) {
 
   fd_vm_syscall_register_all( syscalls );
   
+  /* https://github.com/anza-xyz/agave/blob/574bae8fefc0ed256b55340b9d87b7689bcdf222/programs/bpf_loader/src/lib.rs#L1362-L1368 */
   ulong input_sz = 0;
   ulong pre_lens[ 256UL ];
   uchar * input = fd_bpf_loader_input_serialize_aligned( *instr_ctx, &input_sz, pre_lens );
@@ -312,6 +315,7 @@ execute( fd_exec_instr_ctx_t * instr_ctx, fd_sbpf_validated_program_t * prog ) {
     return FD_EXECUTOR_INSTR_ERR_MISSING_ACC;
   }
 
+  /* TODO: (topointon): correctly set check_align and check_size in vm setup */
   fd_vm_exec_context_t vm_ctx = {
     .entrypoint          = (long)prog->entry_pc,
     .program_counter     = 0UL,
@@ -469,7 +473,7 @@ process_loader_upgradeable_instruction( fd_exec_instr_ctx_t * instr_ctx ) {
                               program_data_offset, 
                               instruction.inner.write.bytes,
                               instruction.inner.write.bytes_len );
-    if( err ) {
+    if( FD_UNLIKELY( err ) ) {
       return err;
     }
   /* https://github.com/anza-xyz/agave/blob/574bae8fefc0ed256b55340b9d87b7689bcdf222/programs/bpf_loader/src/lib.rs#L526-L702 */
@@ -480,7 +484,18 @@ process_loader_upgradeable_instruction( fd_exec_instr_ctx_t * instr_ctx ) {
     }
     fd_pubkey_t const * payer_key       = &txn_accs[ instr_acc_idxs[ 0UL ] ];
     fd_pubkey_t const * programdata_key = &txn_accs[ instr_acc_idxs[ 1UL ] ];
-    /* rent is accessed directly from the epoch bank */
+    /* rent is accessed directly from the epoch bank and the clock from the
+       slot context. However, a check must be done to make sure that the 
+       sysvars are correctly included in the set of transaction accounts. */
+    err = fd_check_sysvar_account( instr_ctx, 4UL, &fd_sysvar_rent_id ); 
+    if( err ) {
+      return err;
+    }
+    err = fd_check_sysvar_account( instr_ctx, 5UL, &fd_sysvar_clock_id );
+    if( err ) {
+      return err;
+    }
+
     fd_sol_sysvar_clock_t clock = {0};
     if( !fd_sysvar_clock_read( &clock, instr_ctx->slot_ctx ) ) {
       return FD_EXECUTOR_INSTR_ERR_GENERIC_ERR;
@@ -722,6 +737,18 @@ process_loader_upgradeable_instruction( fd_exec_instr_ctx_t * instr_ctx ) {
       return FD_EXECUTOR_INSTR_ERR_NOT_ENOUGH_ACC_KEYS;
     }
     fd_pubkey_t const * programdata_key = &txn_accs[ instr_acc_idxs[ 0UL ] ];
+
+    /* rent is accessed directly from the epoch bank and the clock from the
+       slot context. However, a check must be done to make sure that the 
+       sysvars are correctly included in the set of transaction accounts. */
+    err = fd_check_sysvar_account( instr_ctx, 4UL, &fd_sysvar_rent_id ); 
+    if( err ) {
+      return err;
+    }
+    err = fd_check_sysvar_account( instr_ctx, 5UL, &fd_sysvar_clock_id );
+    if( err ) {
+      return err;
+    }
 
     if( instr_ctx->instr->acct_cnt<7U ) {
       FD_LOG_WARNING(( "Not enough account keys for instruction" ));
@@ -1352,22 +1379,24 @@ int
 fd_bpf_loader_v3_program_execute( fd_exec_instr_ctx_t ctx ) {
   /* https://github.com/anza-xyz/agave/blob/77daab497df191ef485a7ad36ed291c1874596e5/programs/bpf_loader/src/lib.rs#L491-L529 */
   fd_borrowed_account_t * program_account = NULL;
-  fd_pubkey_t const * program_id_pubkey   = &ctx.instr->program_id_pubkey;
+  fd_pubkey_t const *     program_id      = &ctx.instr->program_id_pubkey;
   int err = fd_txn_borrowed_account_view_idx( ctx.txn_ctx, ctx.instr->program_id, &program_account );
-  if( err != FD_ACC_MGR_SUCCESS ) {
+  if( err!=FD_ACC_MGR_SUCCESS ) {
     FD_LOG_WARNING(( "Borrowed account lookup failed for program account" ));
     return err;
   }
 
-  if( memcmp( &fd_solana_native_loader_id, program_account->const_meta->info.owner, sizeof(fd_pubkey_t) ) == 0 ) {
-    if( memcmp( &fd_solana_bpf_loader_upgradeable_program_id, program_id_pubkey, sizeof(fd_pubkey_t) ) == 0 ) {
+  /* Program management insturction */
+  if( !memcmp( &fd_solana_native_loader_id, program_account->const_meta->info.owner, sizeof(fd_pubkey_t) ) ) {
+    if( !memcmp( &fd_solana_bpf_loader_upgradeable_program_id, program_id, sizeof(fd_pubkey_t) ) ) {
+      /* TODO: replace with checked sub here */
       ctx.txn_ctx->compute_meter = fd_ulong_sat_sub( ctx.txn_ctx->compute_meter, UPGRADEABLE_LOADER_COMPUTE_UNITS );
       return process_loader_upgradeable_instruction( &ctx );
-    } else if( memcmp( &fd_solana_bpf_loader_program_id, program_id_pubkey, sizeof(fd_pubkey_t) ) == 0 ) {
+    } else if( !memcmp( &fd_solana_bpf_loader_program_id, program_id, sizeof(fd_pubkey_t) ) ) {
       ctx.txn_ctx->compute_meter = fd_ulong_sat_sub( ctx.txn_ctx->compute_meter, DEFAULT_LOADER_COMPUTE_UNITS );
       FD_LOG_WARNING(( "BPF loader management instructions are no longer supported" ));
       return FD_EXECUTOR_INSTR_ERR_UNSUPPORTED_PROGRAM_ID;
-    } else if( memcmp( &fd_solana_bpf_loader_deprecated_program_id, program_id_pubkey, sizeof(fd_pubkey_t) ) == 0 ) {
+    } else if( !memcmp( &fd_solana_bpf_loader_deprecated_program_id, program_id, sizeof(fd_pubkey_t) ) ) {
       ctx.txn_ctx->compute_meter = fd_ulong_sat_sub( ctx.txn_ctx->compute_meter, DEPRECATED_LOADER_COMPUTE_UNITS );
       FD_LOG_WARNING(( "Deprecated loader is no longer supported" ));
       return FD_EXECUTOR_INSTR_ERR_UNSUPPORTED_PROGRAM_ID;
@@ -1394,16 +1423,17 @@ fd_bpf_loader_v3_program_execute( fd_exec_instr_ctx_t ctx ) {
   /* The Agave client stores a loaded program type state in its implementation 
      of the loaded program cache. It checks to see if an account is able to be
      executed. It is possible for a program to be in the DelayVisibility state or
-     Closed state but it won't be reflected in our cache. Program accounts that 
-     are in this state should exit with an invalid account data error. For programs
-     that are recently deployed or upgraded, they should not be allowed to be 
-     accessed for the remainder of the slot. For closed accounts, theya re uninitalized
-     and should be inaccessible as well.
+     Closed state but it won't be reflected in the Firedancer cache. Program 
+     accounts that are in this state should exit with an invalid account data 
+     error. For programs that are recently deployed or upgraded, they should not
+     be allowed to be executed for the remainder of the slot. For closed 
+     accounts, they're uninitalized and shouldn't be executed as well.
      
      For the former case the slot that the 
      program was last updated in is in the program data account.
-     This means that if the slot in the program data account is equal to the current
-     execution slot, then the account is in a DelayVisiblity state.
+     This means that if the slot in the program data account is greater than or
+     equal to the current execution slot, then the account is in a 
+     ''LoadedProgramType::DelayVisiblity' state.
      
      The latter case as described above is a tombstone account which is in a Closed
      state. This occurs when a program data account is closed. However, our cache
@@ -1439,7 +1469,8 @@ fd_bpf_loader_v3_program_execute( fd_exec_instr_ctx_t ctx ) {
 
   ulong program_data_slot = program_data_account_state.inner.program_data.slot;
   if( program_data_slot>=ctx.slot_ctx->slot_bank.slot ) {
-    /* The account was likely just deployed or upgraded. */
+    /* The account was likely just deployed or upgraded. Corresponds to
+       'LoadedProgramType::DelayVisibility' */
     return FD_EXECUTOR_INSTR_ERR_INVALID_ACC_DATA;
   }
 

@@ -4,9 +4,14 @@
 #include "context/fd_exec_instr_ctx.h"
 #include "context/fd_exec_txn_ctx.h"
 
-#define FD_PUBKEY_ERR_NO_PDA_FOUND (-2)
-#define FD_PUBKEY_ERR_INVALID_PDA  (-1)
-#define FD_PUBKEY_SUCCESS          (0 )
+#define MAX_SEEDS    (16UL)
+#define MAX_SEED_LEN (32UL)
+
+/* TODO: firedancer pubkey errors don't map to agave's implementation */
+#define FD_PUBKEY_ERR_MAX_SEED_LEN_EXCEEDED (-1)
+#define FD_PUBKEY_ERR_INVALID_SEEDS         (-2)
+#define FD_PUBKEY_ERR_NO_PDA_FOUND          (-3)
+#define FD_PUBKEY_SUCCESS                   (0 )
 
 FD_PROTOTYPES_BEGIN
 
