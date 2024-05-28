@@ -24,3 +24,4 @@ src/flamenco/runtime/tests/run_ledger_tests.sh -l mainnet-257222682 -s snapshot-
 src/flamenco/runtime/tests/run_ledger_tests.sh -l mainnet-264890264 -s snapshot-264890263-G9sNBh5CPSU9A1nXtC6QE87o1NPkwyMPh7XVKG5mw1Ka.tar.zst -p 32 -y 16 -m 5000000 -e 264890265 --zst
 src/flamenco/runtime/tests/run_ledger_tests.sh -l mainnet-257229353 -s snapshot-257229353-9wETKbJxKf7ceWxtLFJN8VffLQJ2xQVXLUgrXtp6UMx.tar.zst  -p 16 -y 16 -m 5000000 -e 257229357 --zst
 src/flamenco/runtime/tests/run_ledger_tests.sh -l mainnet-257257983 -s snapshot-257257983-2BUVWgqWECejK8jk8XzJhYpYdMuJk2cnAshMcQZmN2Tz.tar.zst -p 16 -y 32 -m 5000000 -e 257257986 --zst
+src/flamenco/runtime/tests/run_ledger_tests.sh -l mainnet-267728520 -s snapshot-267728520-AnKvgiQEYQMxnSp8U4pps7tR8c7pCJ3mMCE2Zqzij2ek.tar.zst -p 16 -p 16 -m 5000000 -e 267728522
