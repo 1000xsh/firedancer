@@ -1757,7 +1757,7 @@ ws_method_accountSubscribe(fd_websocket_ctx_t * wsctx, struct json_values * valu
     if (val == NULL) {
       fd_textstream_sprintf(ts, "{\"jsonrpc\":\"2.0\",\"result\":{\"context\":{\"apiVersion\":\"" API_VERSION "\",\"slot\":%lu},\"value\":null},\"id\":%lu}" CRLF,
                             ctx->blockstore->smr, ctx->call_id);
-      return 0;
+      return 1;
     }
 
     fd_account_meta_t * metadata = (fd_account_meta_t *)val;
@@ -1884,7 +1884,7 @@ ws_method_accountSubscribe(fd_websocket_ctx_t * wsctx, struct json_values * valu
 }
 
 static int
-  ws_method_accountSubscribe_update(fd_rpc_ctx_t * ctx, fd_replay_notif_msg_t * msg, struct fd_ws_subscription * sub, fd_textstream_t * ts) {
+ws_method_accountSubscribe_update(fd_rpc_ctx_t * ctx, fd_replay_notif_msg_t * msg, struct fd_ws_subscription * sub, fd_textstream_t * ts) {
   FD_METHOD_SCRATCH_BEGIN( 11<<20 ) {
     fd_websocket_ctx_t * wsctx = sub->socket;
 
