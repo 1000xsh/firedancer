@@ -5,6 +5,8 @@
 #include "../../funk/fd_funk.h"
 #include "../../flamenco/runtime/fd_blockstore.h"
 #include "../../tango/mcache/fd_mcache.h"
+#include "../../util/textstream/fd_textstream.h"
+#include "fd_block_to_json.h"
 
 struct fd_rpcserver_args {
   fd_funk_t *       funk;

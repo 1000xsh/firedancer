@@ -10,18 +10,64 @@
 #include "../../flamenco/runtime/sysvar/fd_sysvar_epoch_schedule.h"
 #include "../../ballet/base58/fd_base58.h"
 #include "keywords.h"
-#include "fd_block_to_json.h"
 
 #define API_VERSION "1.17.6"
 
 #define CRLF "\r\n"
 #define MATCH_STRING(_text_,_text_sz_,_str_) (_text_sz_ == sizeof(_str_)-1 && memcmp(_text_, _str_, sizeof(_str_)-1) == 0)
 
+#define FD_LONG_UNSET (1L << 63L)
+
+struct fd_ws_subscription {
+  fd_websocket_ctx_t * socket;
+  long meth_id;
+  long call_id;
+  union {
+    struct {
+      fd_pubkey_t acct;
+      fd_rpc_encoding_t enc;
+      long off;
+      long len;
+    } acct_subscribe;
+  };
+};
+
+#define FD_WS_MAX_SUBS 1024
+
+struct fd_ws_sub_list {
+  struct fd_ws_subscription list[FD_WS_MAX_SUBS];
+  ulong cnt;
+  volatile ulong write_lock; /* Incremented at the start of a write operation, and again at the end */
+};
+
+static void fd_ws_subs_lock( struct fd_ws_sub_list * subs ) {
+  register ulong oldval;
+  for(;;) {
+    oldval = subs->write_lock;
+    if( FD_LIKELY( FD_ATOMIC_CAS( &subs->write_lock, oldval, oldval+1U) == oldval ) ) break;
+    FD_SPIN_PAUSE();
+  }
+  if( FD_UNLIKELY(oldval&1UL) ) FD_LOG_CRIT(( "attempt to lock subscriptions when it is already locked" ));
+  FD_COMPILER_MFENCE();
+}
+
+static void fd_ws_subs_unlock( struct fd_ws_sub_list * subs ) {
+  FD_COMPILER_MFENCE();
+  register ulong oldval;
+  for(;;) {
+    oldval = subs->write_lock;
+    if( FD_LIKELY( FD_ATOMIC_CAS( &subs->write_lock, oldval, oldval+1U) == oldval ) ) break;
+    FD_SPIN_PAUSE();
+  }
+  if( FD_UNLIKELY(!(oldval&1UL)) ) FD_LOG_CRIT(( "attempt to unlock subscriptions when it is already unlocked" ));
+}
+
 struct fd_rpc_ctx {
     fd_webserver_t ws;
     fd_funk_t * funk;
     fd_blockstore_t * blockstore;
     long call_id;
+    struct fd_ws_sub_list * subs;
 };
 
 static void *
@@ -146,15 +192,15 @@ method_getAccountInfo(struct fd_web_replier* replier, struct json_values* values
     };
     ulong enc_str_sz = 0;
     const void* enc_str = json_get_value(values, PATH2, 4, &enc_str_sz);
-    enum { ENC_BASE58, ENC_BASE64, ENC_BASE64_ZSTD, ENC_JSON } enc;
+    fd_rpc_encoding_t enc;
     if (enc_str == NULL || MATCH_STRING(enc_str, enc_str_sz, "base58"))
-      enc = ENC_BASE58;
+      enc = FD_ENC_BASE58;
     else if (MATCH_STRING(enc_str, enc_str_sz, "base64"))
-      enc = ENC_BASE64;
+      enc = FD_ENC_BASE64;
     else if (MATCH_STRING(enc_str, enc_str_sz, "base64+zstd"))
-      enc = ENC_BASE64_ZSTD;
+      enc = FD_ENC_BASE64_ZSTD;
     else if (MATCH_STRING(enc_str, enc_str_sz, "jsonParsed"))
-      enc = ENC_JSON;
+      enc = FD_ENC_JSON;
     else {
       fd_web_replier_error(replier, "invalid data encoding %s", (const char*)enc_str);
       return 0;
@@ -177,7 +223,7 @@ method_getAccountInfo(struct fd_web_replier* replier, struct json_values* values
     ulong off_sz = 0;
     const void* off_ptr = json_get_value(values, PATH4, 4, &off_sz);
     if (len_ptr && off_ptr) {
-      if (enc == ENC_JSON) {
+      if (enc == FD_ENC_JSON) {
         fd_web_replier_error(replier, "cannot use jsonParsed encoding with slice");
         return 0;
       }
@@ -202,21 +248,19 @@ method_getAccountInfo(struct fd_web_replier* replier, struct json_values* values
 
     if (val_sz) {
       switch (enc) {
-      case ENC_BASE58:
+      case FD_ENC_BASE58:
         if (fd_textstream_encode_base58(ts, val, val_sz)) {
           fd_web_replier_error(replier, "failed to encode data in base58");
           return 0;
         }
         break;
-      case ENC_BASE64:
+      case FD_ENC_BASE64:
         if (fd_textstream_encode_base64(ts, val, val_sz)) {
           fd_web_replier_error(replier, "failed to encode data in base64");
           return 0;
         }
         break;
-      case ENC_BASE64_ZSTD:
-        break;
-      case ENC_JSON:
+      default:
         break;
       }
     }
@@ -318,15 +362,15 @@ method_getBlock(struct fd_web_replier* replier, struct json_values* values, fd_r
 
   ulong enc_str_sz = 0;
   const void* enc_str = json_get_value(values, PATH_ENCODING, 4, &enc_str_sz);
-  enum fd_block_encoding enc;
+  fd_rpc_encoding_t enc;
   if (enc_str == NULL || MATCH_STRING(enc_str, enc_str_sz, "json"))
-    enc = FD_BLOCK_ENC_JSON;
+    enc = FD_ENC_JSON;
   else if (MATCH_STRING(enc_str, enc_str_sz, "base58"))
-    enc = FD_BLOCK_ENC_BASE58;
+    enc = FD_ENC_BASE58;
   else if (MATCH_STRING(enc_str, enc_str_sz, "base64"))
-    enc = FD_BLOCK_ENC_BASE64;
+    enc = FD_ENC_BASE64;
   else if (MATCH_STRING(enc_str, enc_str_sz, "jsonParsed"))
-    enc = FD_BLOCK_ENC_JSON_PARSED;
+    enc = FD_ENC_JSON_PARSED;
   else {
     fd_web_replier_error(replier, "invalid data encoding %s", (const char*)enc_str);
     return 0;
@@ -850,15 +894,15 @@ method_getMultipleAccounts(struct fd_web_replier* replier, struct json_values* v
     };
     ulong enc_str_sz = 0;
     const void* enc_str = json_get_value(values, ENC_PATH, 4, &enc_str_sz);
-    enum { ENC_BASE58, ENC_BASE64, ENC_BASE64_ZSTD, ENC_JSON } enc;
+    fd_rpc_encoding_t enc;
     if (enc_str == NULL || MATCH_STRING(enc_str, enc_str_sz, "base58"))
-      enc = ENC_BASE58;
+      enc = FD_ENC_BASE58;
     else if (MATCH_STRING(enc_str, enc_str_sz, "base64"))
-      enc = ENC_BASE64;
+      enc = FD_ENC_BASE64;
     else if (MATCH_STRING(enc_str, enc_str_sz, "base64+zstd"))
-      enc = ENC_BASE64_ZSTD;
+      enc = FD_ENC_BASE64_ZSTD;
     else if (MATCH_STRING(enc_str, enc_str_sz, "jsonParsed"))
-      enc = ENC_JSON;
+      enc = FD_ENC_JSON;
     else {
       fd_web_replier_error(replier, "invalid data encoding %s", (const char*)enc_str);
       return 0;
@@ -909,21 +953,19 @@ method_getMultipleAccounts(struct fd_web_replier* replier, struct json_values* v
 
       if (val_sz) {
         switch (enc) {
-        case ENC_BASE58:
+        case FD_ENC_BASE58:
           if (fd_textstream_encode_base58(ts, val, val_sz)) {
             fd_web_replier_error(replier, "failed to encode data in base58");
             return 0;
           }
           break;
-        case ENC_BASE64:
+        case FD_ENC_BASE64:
           if (fd_textstream_encode_base64(ts, val, val_sz)) {
             fd_web_replier_error(replier, "failed to encode data in base64");
             return 0;
           }
           break;
-        case ENC_BASE64_ZSTD:
-          break;
-        case ENC_JSON:
+        default:
           break;
         }
       }
@@ -1189,15 +1231,15 @@ method_getTransaction(struct fd_web_replier* replier, struct json_values* values
 
   ulong enc_str_sz = 0;
   const void* enc_str = json_get_value(values, PATH_ENCODING, 3, &enc_str_sz);
-  enum fd_block_encoding enc;
+  fd_rpc_encoding_t enc;
   if (enc_str == NULL || MATCH_STRING(enc_str, enc_str_sz, "json"))
-    enc = FD_BLOCK_ENC_JSON;
+    enc = FD_ENC_JSON;
   else if (MATCH_STRING(enc_str, enc_str_sz, "base58"))
-    enc = FD_BLOCK_ENC_BASE58;
+    enc = FD_ENC_BASE58;
   else if (MATCH_STRING(enc_str, enc_str_sz, "base64"))
-    enc = FD_BLOCK_ENC_BASE64;
+    enc = FD_ENC_BASE64;
   else if (MATCH_STRING(enc_str, enc_str_sz, "jsonParsed"))
-    enc = FD_BLOCK_ENC_JSON_PARSED;
+    enc = FD_ENC_JSON_PARSED;
   else {
     fd_web_replier_error(replier, "invalid data encoding %s", (const char*)enc_str);
     return 0;
@@ -1730,15 +1772,15 @@ ws_method_accountSubscribe(fd_websocket_ctx_t * wsctx, struct json_values * valu
     };
     ulong enc_str_sz = 0;
     const void* enc_str = json_get_value(values, PATH2, 4, &enc_str_sz);
-    enum { ENC_BASE58, ENC_BASE64, ENC_BASE64_ZSTD, ENC_JSON } enc;
+    fd_rpc_encoding_t enc;
     if (enc_str == NULL || MATCH_STRING(enc_str, enc_str_sz, "base58"))
-      enc = ENC_BASE58;
+      enc = FD_ENC_BASE58;
     else if (MATCH_STRING(enc_str, enc_str_sz, "base64"))
-      enc = ENC_BASE64;
+      enc = FD_ENC_BASE64;
     else if (MATCH_STRING(enc_str, enc_str_sz, "base64+zstd"))
-      enc = ENC_BASE64_ZSTD;
+      enc = FD_ENC_BASE64_ZSTD;
     else if (MATCH_STRING(enc_str, enc_str_sz, "jsonParsed"))
-      enc = ENC_JSON;
+      enc = FD_ENC_JSON;
     else {
       fd_web_ws_error(wsctx, "invalid data encoding %s", (const char*)enc_str);
       return 0;
@@ -1761,7 +1803,7 @@ ws_method_accountSubscribe(fd_websocket_ctx_t * wsctx, struct json_values * valu
     ulong off_sz = 0;
     const void* off_ptr = json_get_value(values, PATH4, 4, &off_sz);
     if (len_ptr && off_ptr) {
-      if (enc == ENC_JSON) {
+      if (enc == FD_ENC_JSON) {
         fd_web_ws_error(wsctx, "cannot use jsonParsed encoding with slice");
         return 0;
       }
@@ -1786,21 +1828,19 @@ ws_method_accountSubscribe(fd_websocket_ctx_t * wsctx, struct json_values * valu
 
     if (val_sz) {
       switch (enc) {
-      case ENC_BASE58:
+      case FD_ENC_BASE58:
         if (fd_textstream_encode_base58(ts, val, val_sz)) {
           fd_web_ws_error(wsctx, "failed to encode data in base58");
           return 0;
         }
         break;
-      case ENC_BASE64:
+      case FD_ENC_BASE64:
         if (fd_textstream_encode_base64(ts, val, val_sz)) {
           fd_web_ws_error(wsctx, "failed to encode data in base64");
           return 0;
         }
         break;
-      case ENC_BASE64_ZSTD:
-        break;
-      case ENC_JSON:
+      default:
         break;
       }
     }
@@ -1815,6 +1855,23 @@ ws_method_accountSubscribe(fd_websocket_ctx_t * wsctx, struct json_values * valu
                           metadata->info.rent_epoch,
                           val_sz,
                           ctx->call_id);
+
+    fd_ws_subs_lock( ctx->subs );
+    if( ctx->subs->cnt >= FD_WS_MAX_SUBS ) {
+      fd_ws_subs_unlock( ctx->subs );
+      fd_web_ws_error(wsctx, "too many subscriptions");
+      return 0;
+    }
+    struct fd_ws_subscription * sub = &ctx->subs->list[ ctx->subs->cnt++ ];
+    sub->socket = wsctx;
+    sub->meth_id = KEYW_WS_METHOD_ACCOUNTSUBSCRIBE;
+    sub->call_id = ctx->call_id;
+    sub->acct_subscribe.acct = acct;
+    sub->acct_subscribe.enc = enc;
+    sub->acct_subscribe.off = (off_ptr ? *(long*)off_ptr : FD_LONG_UNSET);
+    sub->acct_subscribe.len = (len_ptr ? *(long*)len_ptr : FD_LONG_UNSET);
+    fd_ws_subs_unlock( ctx->subs );
+
   } FD_METHOD_SCRATCH_END;
 
   return 1;
@@ -1887,6 +1944,10 @@ fd_rpc_start_service(fd_rpcserver_args_t * args, fd_rpc_ctx_t ** ctx_p) {
   *ctx_p = ctx;
   ctx->funk = args->funk;
   ctx->blockstore = args->blockstore;
+  struct fd_ws_sub_list * subs = (struct fd_ws_sub_list *)malloc(sizeof(struct fd_ws_sub_list));
+  subs->cnt = 0;
+  subs->write_lock = 0;
+  ctx->subs = subs;
   FD_LOG_NOTICE(( "starting web server with %lu threads on port %u", args->num_threads, (uint)args->port ));
   if (fd_webserver_start(args->num_threads, args->port, args->ws_port, &ctx->ws, ctx))
     FD_LOG_ERR(("fd_webserver_start failed"));
@@ -1897,10 +1958,25 @@ fd_rpc_stop_service(fd_rpc_ctx_t * ctx) {
   FD_LOG_NOTICE(( "stopping web server" ));
   if (fd_webserver_stop(&ctx->ws))
     FD_LOG_ERR(("fd_webserver_stop failed"));
+  free(ctx->subs);
   free(ctx);
 }
 
 void
 fd_rpc_ws_poll(fd_rpc_ctx_t * ctx) {
   fd_webserver_ws_poll(&ctx->ws);
+}
+
+void
+fd_webserver_ws_closed(fd_websocket_ctx_t * wsctx, void * cb_arg) {
+  fd_rpc_ctx_t * ctx = ( fd_rpc_ctx_t *)cb_arg;
+  struct fd_ws_sub_list * subs = ctx->subs;
+  fd_ws_subs_lock( subs );
+  for( ulong i = 0; i < subs->cnt; ++i ) {
+    if( subs->list[i].socket == wsctx ) {
+      fd_memcpy( &subs->list[i], &subs->list[--(subs->cnt)], sizeof(struct fd_ws_subscription) );
+      --i;
+    }
+  }
+  fd_ws_subs_unlock( subs );
 }

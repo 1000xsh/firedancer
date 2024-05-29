@@ -12,11 +12,15 @@ struct fd_webserver {
 };
 typedef struct fd_webserver fd_webserver_t;
 
+typedef struct fd_websocket_ctx fd_websocket_ctx_t;
+
 int fd_webserver_start(ulong num_threads, ushort portno, ushort ws_portno, fd_webserver_t * ws, void * cb_arg);
 
 int fd_webserver_stop(fd_webserver_t * ws);
 
 void fd_webserver_ws_poll(fd_webserver_t * ws);
+
+void fd_webserver_ws_closed(fd_websocket_ctx_t * wsctx, void * cb_arg);
 
 #ifndef KEYW_UNKNOWN
 #define KEYW_UNKNOWN -1L

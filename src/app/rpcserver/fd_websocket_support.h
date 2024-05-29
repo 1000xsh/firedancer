@@ -296,6 +296,7 @@ epoll_selected( struct epoll_event * event ) {
     }
   } while (0);
 
+  fd_webserver_ws_closed(ws, ws->ws->cb_arg);
   epoll_ctl(ws->ws->ws_epoll_fd, EPOLL_CTL_DEL, ws->sock, NULL);
   MHD_upgrade_action (urh, MHD_UPGRADE_ACTION_CLOSE);
   free (ws);
