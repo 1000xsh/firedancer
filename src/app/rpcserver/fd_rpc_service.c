@@ -1907,6 +1907,39 @@ ws_method_accountSubscribe_update(fd_rpc_ctx_t * ctx, fd_replay_notif_msg_t * ms
   return 1;
 }
 
+static int
+ws_method_slotSubscribe(fd_websocket_ctx_t * wsctx, struct json_values * values, fd_rpc_ctx_t * ctx, fd_textstream_t * ts) {
+  (void)values;
+  fd_ws_subs_lock( ctx->subs );
+  if( ctx->subs->cnt >= FD_WS_MAX_SUBS ) {
+    fd_ws_subs_unlock( ctx->subs );
+    fd_web_ws_error(wsctx, "too many subscriptions");
+    return 0;
+  }
+  struct fd_ws_subscription * sub = &ctx->subs->list[ ctx->subs->cnt++ ];
+  sub->socket = wsctx;
+  sub->meth_id = KEYW_WS_METHOD_SLOTSUBSCRIBE;
+  sub->call_id = ctx->call_id;
+  ulong subid = sub->subsc_id = ++(ctx->subs->last_subsc_id);
+  fd_ws_subs_unlock( ctx->subs );
+
+  fd_textstream_sprintf(ts, "{\"jsonrpc\":\"2.0\",\"result\":%lu,\"id\":%lu}" CRLF,
+                        subid, sub->call_id);
+
+  return 1;
+}
+
+static int
+ws_method_slotSubscribe_update(fd_rpc_ctx_t * ctx, fd_replay_notif_msg_t * msg, struct fd_ws_subscription * sub, fd_textstream_t * ts) {
+  (void)ctx;
+  char bank_hash[50];
+  fd_base58_encode_32(msg->slot_exec.bank_hash.uc, 0, bank_hash);
+  fd_textstream_sprintf(ts, "{\"jsonrpc\":\"2.0\",\"method\":\"slotNotification\",\"params\":{\"result\":{\"parent\":%lu,\"root\":%lu,\"slot\":%lu,\"bank_hash\":\"%s\"},\"subscription\":%lu}}" CRLF,
+                        msg->slot_exec.parent, msg->slot_exec.root, msg->slot_exec.slot,
+                        bank_hash, sub->subsc_id);
+  return 1;
+}
+
 int
 fd_webserver_ws_subscribe(struct json_values* values, fd_websocket_ctx_t * wsctx, void * cb_arg) {
   fd_rpc_ctx_t ctx = *( fd_rpc_ctx_t *)cb_arg;
@@ -1956,6 +1989,13 @@ fd_webserver_ws_subscribe(struct json_values* values, fd_websocket_ctx_t * wsctx
   switch (meth_id) {
   case KEYW_WS_METHOD_ACCOUNTSUBSCRIBE:
     if (ws_method_accountSubscribe(wsctx, values, &ctx, &ts)) {
+      fd_web_ws_reply( wsctx, &ts );
+      fd_textstream_destroy(&ts);
+      return 1;
+    }
+    return 0;
+  case KEYW_WS_METHOD_SLOTSUBSCRIBE:
+    if (ws_method_slotSubscribe(wsctx, values, &ctx, &ts)) {
       fd_web_ws_reply( wsctx, &ts );
       fd_textstream_destroy(&ts);
       return 1;
@@ -2016,8 +2056,10 @@ void
 fd_rpc_replay_notify(fd_rpc_ctx_t * ctx, fd_replay_notif_msg_t * msg) {
   struct fd_ws_sub_list * subs = ctx->subs;
   fd_ws_subs_lock( subs );
+
   if( subs->cnt == 0 ) {
     /* do nothing */
+
   } else if( msg->type == FD_REPLAY_SAVED_TYPE ) {
     fd_textstream_t ts;
     fd_textstream_new(&ts, fd_libc_alloc_virtual(), 11UL<<21);
@@ -2037,6 +2079,22 @@ fd_rpc_replay_notify(fd_rpc_ctx_t * ctx, fd_replay_notif_msg_t * msg) {
     }
 
     fd_textstream_destroy(&ts);
+
+  } else if( msg->type == FD_REPLAY_SLOT_TYPE ) {
+    fd_textstream_t ts;
+    fd_textstream_new(&ts, fd_libc_alloc_virtual(), 1UL<<16);
+
+    for( ulong j = 0; j < subs->cnt; ++j ) {
+      struct fd_ws_subscription * sub = &ctx->subs->list[ j ];
+      if( sub->meth_id == KEYW_WS_METHOD_SLOTSUBSCRIBE ) {
+        fd_textstream_clear( &ts );
+        if( ws_method_slotSubscribe_update( ctx, msg, sub, &ts ) )
+          fd_web_ws_reply( sub->socket, &ts );
+      }
+    }
+
+    fd_textstream_destroy(&ts);
   }
+
   fd_ws_subs_unlock( subs );
 }
