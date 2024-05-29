@@ -287,6 +287,7 @@ fd_sbpf_load_shdrs( fd_sbpf_elf_info_t *  info,
      of the rodata segment.  This is the minimal virtual address range
      that spans all sections.  The offset of each section in virtual
      addressing and file addressing is guaranteed to be the same. */
+  ulong segment_start = FD_SBPF_MM_PROGRAM_ADDR;  /* Lower bound of segment virtual address */
   ulong segment_end    = 0UL;  /* Upper bound of segment virtual address */
   ulong tot_section_sz = 0UL;  /* Size of all sections */
 
@@ -390,6 +391,7 @@ fd_sbpf_load_shdrs( fd_sbpf_elf_info_t *  info,
       REQUIRE( paddr_end >= sh_offset );
       REQUIRE( paddr_end <= elf_sz    );
 
+      segment_start = fd_ulong_min( segment_start, sh_addr );
       /* Expand range to fit section */
       segment_end = fd_ulong_max( segment_end, sh_virtual_end );
 
@@ -401,7 +403,10 @@ fd_sbpf_load_shdrs( fd_sbpf_elf_info_t *  info,
 
   /* More coherence checks to conform with agave */
   REQUIRE( segment_end   <=elf_sz ); // https://github.com/solana-labs/rbpf/blob/v0.8.0/src/elf.rs#L782
-  REQUIRE( tot_section_sz <= segment_end ); // https://github.com/solana-labs/rbpf/blob/v0.8.0/src/elf.rs#L725
+
+  /* Check that the rodata segment is within bounds
+     https://github.com/solana-labs/rbpf/blob/v0.8.0/src/elf.rs#L725 */
+  REQUIRE( fd_ulong_sat_add( segment_start, tot_section_sz ) <= segment_end );
 
   /* Require .text section */
 
