@@ -8,6 +8,7 @@
 #define FD_REPLAY_NOTIF_DEPTH 1024U
 
 #define FD_REPLAY_SAVED_TYPE 0x29FE5131U
+#define FD_REPLAY_SLOT_TYPE  0xD1239ACAU
 
 struct __attribute__((aligned(64UL))) fd_replay_notif_msg {
   union {
@@ -16,6 +17,12 @@ struct __attribute__((aligned(64UL))) fd_replay_notif_msg {
       fd_pubkey_t       acct_id[FD_REPLAY_NOTIF_ACCT_MAX];
       uint              acct_id_cnt;
     } acct_saved;
+    struct {
+      ulong parent;
+      ulong root;
+      ulong slot;
+      fd_hash_t bank_hash;
+    } slot_exec;
   };
   uint type;
 };
