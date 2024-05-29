@@ -30,6 +30,8 @@ def generate(feature_map_path, header_path, body_path):
         )
         fd_features_t_params.append(f"    /* {short_id} */ ulong {x['name']};")
         rmap[x["pubkey"]] = x["name"]
+        if "old" in x:
+            rmap[x["old"]] = x["name"]
     fd_features_t_params = "\n".join(fd_features_t_params)
 
     # Write header file.
@@ -81,6 +83,19 @@ fd_feature_id_t const ids[] = {{""",
         if x.get("hardcoded") == 1:
             print(f",\n    .hardcoded = 1", file=body, end="")
         print(" },\n", file=body)
+        if "old" in x:
+            print(
+                f'''  {{ .index  = offsetof(fd_features_t, {x["name"]})>>3,
+        .id     = {{{pubkey_to_c_array(x["old"])}}},
+                  /* {x["old"]} */
+        .name   = "{x["name"]}"''',
+                file=body,
+                end="",
+            )
+            if x.get("hardcoded") == 1:
+                print(f",\n    .hardcoded = 1", file=body, end="")
+            print(" },\n", file=body)
+
     print(
         f"""  {{ .index = ULONG_MAX }}
 }};

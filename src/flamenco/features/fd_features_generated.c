@@ -498,6 +498,11 @@ fd_feature_id_t const ids[] = {
               /* 9bn2vTJUsUcnpiZWbu2woSKtTGW3ErZC9ERv88SDqQjK */
     .name   = "enable_partitioned_epoch_reward" },
 
+  { .index  = offsetof(fd_features_t, enable_partitioned_epoch_reward)>>3,
+        .id     = {"\x2c\xcd\x49\xd1\x01\x45\x2d\x2e\x60\xc4\x6e\x4a\xe2\xe3\x4b\x6d\x5f\x33\xdc\x75\x97\x0d\x05\x15\x83\xa4\x96\xa7\x3a\x54\x06\x16"},
+                  /* 41tVp5qR1XwWRt5WifvtSQyuxtqQWJgEK8w91AtBqSwP */
+        .name   = "enable_partitioned_epoch_reward" },
+
   { .index  = offsetof(fd_features_t, spl_token_v3_4_0)>>3,
     .id     = {"\xdd\x49\x17\x14\x26\x0f\xf1\xe8\xa1\x87\xe0\x3b\x4b\x80\x5d\xde\xd4\x52\xd3\x90\x4e\x14\x4c\xa2\xc5\x99\x39\x3f\x15\xf2\x37\x85"},
               /* Ftok4njE8b7tDffYkC5bAbCaQv5sL6jispYrprzatUwN */
@@ -789,10 +794,22 @@ fd_feature_id_t const ids[] = {
     .name   = "drop_merkle_shreds",
     .hardcoded = 1 },
 
+  { .index  = offsetof(fd_features_t, drop_merkle_shreds)>>3,
+        .id     = {"\x69\x08\x18\x1d\x4f\xdb\x4a\x78\x97\x2f\x1b\x4f\x94\xdf\x81\x2b\x60\x4d\x43\xf8\x92\x98\xa4\xdd\x93\xba\x48\xb5\xac\xb8\x3b\xe0"},
+                  /* 84zy5N23Q9vTZuLc9h1HWUtyM9yCFV2SCmyP9W9C3yHZ */
+        .name   = "drop_merkle_shreds",
+    .hardcoded = 1 },
+
   { .index  = offsetof(fd_features_t, keep_merkle_shreds)>>3,
     .id     = {"\xfc\x2b\xba\x88\xd2\xa1\xeb\x71\x75\xdf\x3f\x39\x29\x20\x96\x3b\xfe\xc6\x90\x82\xc6\xbb\xc4\x44\xe3\xde\x9b\x5f\xcc\xbc\xb9\xfe"},
               /* HyNQzc7TMNmRhpVHXqDGjpsHzeQie82mDQXSF9hj7nAH */
     .name   = "keep_merkle_shreds",
+    .hardcoded = 1 },
+
+  { .index  = offsetof(fd_features_t, keep_merkle_shreds)>>3,
+        .id     = {"\xfc\x2b\xba\x88\xd2\xa1\xeb\x71\x75\xdf\x3f\x39\x29\x20\x96\x3b\xfe\xc6\x90\x82\xc6\xbb\xc4\x44\xe3\xde\x9b\x5f\xcc\xbc\xb9\xfe"},
+                  /* HyNQzc7TMNmRhpVHXqDGjpsHzeQie82mDQXSF9hj7nAH */
+        .name   = "keep_merkle_shreds",
     .hardcoded = 1 },
 
   { .index  = offsetof(fd_features_t, move_serialized_len_ptr_in_cpi)>>3,
@@ -940,9 +957,14 @@ fd_feature_id_t const ids[] = {
     .name   = "enable_poseidon_syscall" },
 
   { .index  = offsetof(fd_features_t, timely_vote_credits)>>3,
-    .id     = {"\x1a\xc7\x41\x11\xf0\x44\xfa\x86\x3f\x13\x7e\xa6\x7a\xb2\xd4\x6e\x16\x10\x57\xe6\x96\x23\x5f\x27\xa8\xe5\xf0\x4c\xe8\xf1\x65\x23"},
-              /* 2oXpeh141pPZCTCFHBsvCwG2BtaHZZAtrVhwaxSy6brS */
+    .id     = {"\x0d\x4d\x3c\x51\x23\x21\xd3\xe9\x47\x3d\xc8\x19\x36\x5e\x45\xf8\x09\x81\x7b\xaf\xff\x69\x17\x9f\x2e\x58\x3d\xf1\x6e\xc8\x10\x6b"},
+              /* tvcF6b1TRz353zKuhBjinZkKzjmihXmBAHJdjNYw1sQ */
     .name   = "timely_vote_credits" },
+
+  { .index  = offsetof(fd_features_t, timely_vote_credits)>>3,
+        .id     = {"\x1a\xc7\x41\x11\xf0\x44\xfa\x86\x3f\x13\x7e\xa6\x7a\xb2\xd4\x6e\x16\x10\x57\xe6\x96\x23\x5f\x27\xa8\xe5\xf0\x4c\xe8\xf1\x65\x23"},
+                  /* 2oXpeh141pPZCTCFHBsvCwG2BtaHZZAtrVhwaxSy6brS */
+        .name   = "timely_vote_credits" },
 
   { .index  = offsetof(fd_features_t, remaining_compute_units_syscall_enabled)>>3,
     .id     = {"\x42\x53\x93\xd7\x86\x52\x20\x64\xce\x96\x67\x76\xc0\xb2\x3d\xd2\xe4\xd2\x81\x04\x5e\x7a\xd6\x90\xee\x30\x77\x01\x6a\x54\x6e\x64"},
@@ -1289,7 +1311,7 @@ fd_feature_id_query( ulong prefix ) {
   case 0x74b022574093eeec: return &ids[ 160 ];
   case 0x81b8fd99bea25f9b: return &ids[ 161 ];
   case 0x3cbf822ccb2eebd4: return &ids[ 162 ];
-  case 0x86fa44f01141c71a: return &ids[ 163 ];
+  case 0xe9d32123513c4d0d: return &ids[ 163 ];
   case 0x64205286d7935342: return &ids[ 164 ];
   case 0x97f912be04ecd673: return &ids[ 165 ];
   case 0x4b241cb4c6f3b3b2: return &ids[ 166 ];
