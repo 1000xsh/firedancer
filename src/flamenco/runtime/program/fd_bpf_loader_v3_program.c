@@ -366,9 +366,10 @@ if (FD_UNLIKELY(memcmp(signature, sig, 64) == 0)) {
 static int
 setup_program( fd_exec_instr_ctx_t * ctx,
                uchar const *     program_data,
-               ulong             program_data_len) {
+               ulong             program_data_len,
+               bool             deploy_mode) {
   fd_sbpf_elf_info_t  _elf_info[1];
-  fd_sbpf_elf_info_t * elf_info = fd_sbpf_elf_peek( _elf_info, program_data, program_data_len );
+  fd_sbpf_elf_info_t * elf_info = fd_sbpf_elf_peek( _elf_info, program_data, program_data_len, deploy_mode );
   if( FD_UNLIKELY( !elf_info ) ) {
     FD_LOG_HEXDUMP_WARNING(("Program data hexdump", program_data, program_data_len));
     FD_LOG_WARNING(("Elf info failing"));
@@ -397,7 +398,7 @@ setup_program( fd_exec_instr_ctx_t * ctx,
   fd_vm_syscall_register_all( syscalls );
   /* Load program */
 
-  if(  0!=fd_sbpf_program_load( prog, program_data, program_data_len, syscalls ) ) {
+  if(  0!=fd_sbpf_program_load( prog, program_data, program_data_len, syscalls, deploy_mode ) ) {
     FD_LOG_ERR(( "fd_sbpf_program_load() failed: %s", fd_sbpf_strerror() ));
   }
 
@@ -690,7 +691,7 @@ fd_bpf_loader_v3_program_execute( fd_exec_instr_ctx_t ctx ) {
     buffer_rec->meta->info.lamports  = 0;
 
     // TODO: deploy program
-    err = setup_program( &ctx, buffer_rec->data + BUFFER_METADATA_SIZE, buffer_data_len );
+    err = setup_program( &ctx, buffer_rec->data + BUFFER_METADATA_SIZE, buffer_data_len, true );
     if ( err != 0 ) {
       return err;
     }
@@ -940,7 +941,7 @@ fd_bpf_loader_v3_program_execute( fd_exec_instr_ctx_t ctx ) {
 
     /* https://github.com/solana-labs/solana/blob/4d452fc5e9fd465c50b2404354bbc5d84a30fbcb/programs/bpf_loader/src/lib.rs#L898 */
     /* TODO are those bounds checked */
-    err = setup_program(&ctx, buffer_acc_data + BUFFER_METADATA_SIZE, SIZE_OF_PROGRAM + programdata_data_len);
+    err = setup_program(&ctx, buffer_acc_data + BUFFER_METADATA_SIZE, SIZE_OF_PROGRAM + programdata_data_len, true);
     if (err != 0) {
       return err;
     }
@@ -1526,7 +1527,7 @@ fd_bpf_loader_v3_program_execute( fd_exec_instr_ctx_t ctx ) {
       return err;
     }
 
-    result = setup_program(&ctx, programdata_acc_rec->data, fd_ulong_sat_add(SIZE_OF_PROGRAM, new_len));
+    result = setup_program(&ctx, programdata_acc_rec->data, fd_ulong_sat_add(SIZE_OF_PROGRAM, new_len), true);
 
     programdata_acc_state.discriminant = fd_bpf_upgradeable_loader_state_enum_program_data;
     programdata_acc_state.inner.program_data.slot = clock_slot;

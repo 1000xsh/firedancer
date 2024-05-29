@@ -11,6 +11,7 @@
 
 #include "../../util/fd_util_base.h"
 #include "../elf/fd_elf64.h"
+#include <stdbool.h>
 
 /* Error types ********************************************************/
 
@@ -133,7 +134,8 @@ FD_PROTOTYPES_BEGIN
 fd_sbpf_elf_info_t *
 fd_sbpf_elf_peek( fd_sbpf_elf_info_t * info,
                   void const *         bin,
-                  ulong                bin_sz );
+                  ulong                bin_sz,
+                  bool                 deploy_mode );
 
 /* fd_sbpf_program_{align,footprint} return the alignment and size
    requirements of the memory region backing the fd_sbpf_program_t
@@ -189,7 +191,8 @@ int
 fd_sbpf_program_load( fd_sbpf_program_t *  prog,
                       void const *         bin,
                       ulong                bin_sz,
-                      fd_sbpf_syscalls_t * syscalls );
+                      fd_sbpf_syscalls_t * syscalls,
+                      bool                 deploy_mode );
 
 /* fd_sbpf_program_delete destroys the program object and unformats the
    memory regions holding it. */
