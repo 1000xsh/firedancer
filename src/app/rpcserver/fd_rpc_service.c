@@ -22,6 +22,7 @@ struct fd_ws_subscription {
   fd_websocket_ctx_t * socket;
   long meth_id;
   long call_id;
+  ulong subsc_id;
   union {
     struct {
       fd_pubkey_t acct;
@@ -37,6 +38,7 @@ struct fd_ws_subscription {
 struct fd_ws_sub_list {
   struct fd_ws_subscription list[FD_WS_MAX_SUBS];
   ulong cnt;
+  ulong last_subsc_id;
   volatile ulong write_lock; /* Incremented at the start of a write operation, and again at the end */
 };
 
@@ -1749,26 +1751,8 @@ ws_method_accountSubscribe(fd_websocket_ctx_t * wsctx, struct json_values * valu
       fd_web_ws_error(wsctx, "getAccountInfo requires a string as first parameter");
       return 0;
     }
-
     fd_pubkey_t acct;
     fd_base58_decode_32((const char *)arg, acct.uc);
-    ulong val_sz;
-    void * val = read_account(ctx, &acct, fd_scratch_virtual(), &val_sz);
-    if (val == NULL) {
-      fd_textstream_sprintf(ts, "{\"jsonrpc\":\"2.0\",\"result\":{\"context\":{\"apiVersion\":\"" API_VERSION "\",\"slot\":%lu},\"value\":null},\"id\":%lu}" CRLF,
-                            ctx->blockstore->smr, ctx->call_id);
-      return 1;
-    }
-
-    fd_account_meta_t * metadata = (fd_account_meta_t *)val;
-    if (val_sz < metadata->hlen) {
-      fd_web_ws_error(wsctx, "failed to load account data for %s", (const char*)arg);
-      return 0;
-    }
-    val = (char*)val + metadata->hlen;
-    val_sz = val_sz - metadata->hlen;
-    if (val_sz > metadata->dlen)
-      val_sz = metadata->dlen;
 
     static const uint PATH2[4] = {
       (JSON_TOKEN_LBRACE<<16) | KEYW_JSON_PARAMS,
@@ -1813,54 +1797,7 @@ ws_method_accountSubscribe(fd_websocket_ctx_t * wsctx, struct json_values * valu
         fd_web_ws_error(wsctx, "cannot use jsonParsed encoding with slice");
         return 0;
       }
-      long len = *(long*)len_ptr;
-      long off = *(long*)off_ptr;
-      if (off < 0 || (ulong)off >= val_sz) {
-        val = NULL;
-        val_sz = 0;
-      } else {
-        val = (char*)val + (ulong)off;
-        val_sz = val_sz - (ulong)off;
-      }
-      if (len < 0) {
-        val = NULL;
-        val_sz = 0;
-      } else if ((ulong)len < val_sz)
-        val_sz = (ulong)len;
     }
-
-    fd_textstream_sprintf(ts, "{\"jsonrpc\":\"2.0\",\"result\":{\"context\":{\"apiVersion\":\"" API_VERSION "\",\"slot\":%lu},\"value\":{\"data\":[\"",
-                          ctx->blockstore->smr);
-
-    if (val_sz) {
-      switch (enc) {
-      case FD_ENC_BASE58:
-        if (fd_textstream_encode_base58(ts, val, val_sz)) {
-          fd_web_ws_error(wsctx, "failed to encode data in base58");
-          return 0;
-        }
-        break;
-      case FD_ENC_BASE64:
-        if (fd_textstream_encode_base64(ts, val, val_sz)) {
-          fd_web_ws_error(wsctx, "failed to encode data in base64");
-          return 0;
-        }
-        break;
-      default:
-        break;
-      }
-    }
-
-    char owner[50];
-    fd_base58_encode_32((uchar*)metadata->info.owner, 0, owner);
-    fd_textstream_sprintf(ts, "\",\"%s\"],\"executable\":%s,\"lamports\":%lu,\"owner\":\"%s\",\"rentEpoch\":%lu,\"space\":%lu}},\"id\":%lu}" CRLF,
-                          (const char*)enc_str,
-                          (metadata->info.executable ? "true" : "false"),
-                          metadata->info.lamports,
-                          owner,
-                          metadata->info.rent_epoch,
-                          val_sz,
-                          ctx->call_id);
 
     fd_ws_subs_lock( ctx->subs );
     if( ctx->subs->cnt >= FD_WS_MAX_SUBS ) {
@@ -1872,11 +1809,15 @@ ws_method_accountSubscribe(fd_websocket_ctx_t * wsctx, struct json_values * valu
     sub->socket = wsctx;
     sub->meth_id = KEYW_WS_METHOD_ACCOUNTSUBSCRIBE;
     sub->call_id = ctx->call_id;
+    ulong subid = sub->subsc_id = ++(ctx->subs->last_subsc_id);
     sub->acct_subscribe.acct = acct;
     sub->acct_subscribe.enc = enc;
     sub->acct_subscribe.off = (off_ptr ? *(long*)off_ptr : FD_LONG_UNSET);
     sub->acct_subscribe.len = (len_ptr ? *(long*)len_ptr : FD_LONG_UNSET);
     fd_ws_subs_unlock( ctx->subs );
+
+    fd_textstream_sprintf(ts, "{\"jsonrpc\":\"2.0\",\"result\":%lu,\"id\":%lu}" CRLF,
+                          subid, sub->call_id);
 
   } FD_METHOD_SCRATCH_END;
 
@@ -2007,7 +1948,7 @@ fd_webserver_ws_subscribe(struct json_values* values, fd_websocket_ctx_t * wsctx
   long meth_id = fd_webserver_json_keyword((const char*)arg, arg_sz);
 
   fd_textstream_t ts;
-  fd_textstream_new(&ts, fd_libc_alloc_virtual(), 11UL<<21);
+  fd_textstream_new(&ts, fd_libc_alloc_virtual(), 1UL<<15UL);
 
   switch (meth_id) {
   case KEYW_WS_METHOD_ACCOUNTSUBSCRIBE:
@@ -2032,6 +1973,7 @@ fd_rpc_start_service(fd_rpcserver_args_t * args, fd_rpc_ctx_t ** ctx_p) {
   ctx->blockstore = args->blockstore;
   struct fd_ws_sub_list * subs = (struct fd_ws_sub_list *)malloc(sizeof(struct fd_ws_sub_list));
   subs->cnt = 0;
+  subs->last_subsc_id = 0;
   subs->write_lock = 0;
   ctx->subs = subs;
   FD_LOG_NOTICE(( "starting web server with %lu threads on port %u", args->num_threads, (uint)args->port ));
