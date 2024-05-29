@@ -89,7 +89,8 @@ run_test( char const * path ) {
     /* Compare effects */
     diff = diff_effects( &fixture->output, output );
     if( diff ) {
-      FD_LOG_WARNING(( "Effects differ for fixture %s", path ));
+      /* Need "FAIL" for run_test_vectors script to pickup failure */
+      FD_LOG_WARNING(( "FAIL: Elf loader effects differ for fixture %s", path ));
     }
 
   } while(0);
