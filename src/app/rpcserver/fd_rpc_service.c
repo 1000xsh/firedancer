@@ -1832,8 +1832,8 @@ ws_method_accountSubscribe_update(fd_rpc_ctx_t * ctx, fd_replay_notif_msg_t * ms
     ulong val_sz;
     void * val = read_account_with_xid(ctx, &sub->acct_subscribe.acct, &msg->acct_saved.funk_xid, fd_scratch_virtual(), &val_sz);
     if (val == NULL) {
-      fd_textstream_sprintf(ts, "{\"jsonrpc\":\"2.0\",\"result\":{\"context\":{\"apiVersion\":\"" API_VERSION "\",\"slot\":%lu},\"value\":null},\"id\":%lu}" CRLF,
-                            ctx->blockstore->smr, sub->call_id);
+      fd_textstream_sprintf(ts, "{\"jsonrpc\":\"2.0\",\"result\":{\"context\":{\"apiVersion\":\"" API_VERSION "\",\"slot\":%lu},\"value\":null},\"subscription\":%lu}" CRLF,
+                            msg->acct_saved.funk_xid.ul[0], sub->subsc_id);
       return 1;
     }
 
@@ -1869,7 +1869,7 @@ ws_method_accountSubscribe_update(fd_rpc_ctx_t * ctx, fd_replay_notif_msg_t * ms
     }
 
     fd_textstream_sprintf(ts, "{\"jsonrpc\":\"2.0\",\"result\":{\"context\":{\"apiVersion\":\"" API_VERSION "\",\"slot\":%lu},\"value\":{\"data\":[\"",
-                          ctx->blockstore->smr);
+                          msg->acct_saved.funk_xid.ul[0]);
 
     if (val_sz) {
       switch (sub->acct_subscribe.enc) {
@@ -1892,13 +1892,16 @@ ws_method_accountSubscribe_update(fd_rpc_ctx_t * ctx, fd_replay_notif_msg_t * ms
 
     char owner[50];
     fd_base58_encode_32((uchar*)metadata->info.owner, 0, owner);
-    fd_textstream_sprintf(ts, "\"],\"executable\":%s,\"lamports\":%lu,\"owner\":\"%s\",\"rentEpoch\":%lu,\"space\":%lu}},\"id\":%lu}" CRLF,
+    char addr[50];
+    fd_base58_encode_32(sub->acct_subscribe.acct.uc, 0, addr);
+    fd_textstream_sprintf(ts, "\"],\"executable\":%s,\"lamports\":%lu,\"owner\":\"%s\",\"address\":\"%s\",\"rentEpoch\":%lu,\"space\":%lu}},\"subscription\":%lu}" CRLF,
                           (metadata->info.executable ? "true" : "false"),
                           metadata->info.lamports,
                           owner,
+                          addr,
                           metadata->info.rent_epoch,
                           val_sz,
-                          sub->call_id);
+                          sub->subsc_id);
   } FD_METHOD_SCRATCH_END;
 
   return 1;
