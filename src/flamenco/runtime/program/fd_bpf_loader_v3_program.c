@@ -1317,17 +1317,7 @@ process_loader_upgradeable_instruction( fd_exec_instr_ctx_t * instr_ctx ) {
       fd_native_cpi_create_account_meta( payer_key,       1UL, 1UL, &acct_metas[ 0UL ] );
       fd_native_cpi_create_account_meta( programdata_key, 0UL, 1UL, &acct_metas[ 1UL ] );
 
-      fd_pubkey_t signers[ 1UL ];
-      signers[ 0UL ] = *payer_key;
-
-      err = fd_native_cpi_execute_system_program_instruction(
-        instr_ctx,
-        &instr,
-        acct_metas,
-        2UL,
-        signers,
-        1UL
-      );
+      err = fd_native_cpi_execute_system_program_instruction( instr_ctx, &instr, acct_metas, 2UL, NULL, 0UL );
       if( FD_UNLIKELY( err ) ) {
         return err;
       }
