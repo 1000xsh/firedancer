@@ -76,6 +76,12 @@ read_account( fd_rpc_ctx_t * ctx, fd_pubkey_t * acct, fd_valloc_t valloc, ulong 
   return fd_funk_rec_query_safe(ctx->funk, &recid, valloc, result_len);
 }
 
+static void *
+read_account_with_xid( fd_rpc_ctx_t * ctx, fd_pubkey_t * acct, fd_funk_txn_xid_t * xid, fd_valloc_t valloc, ulong * result_len ) {
+  fd_funk_rec_key_t recid = fd_acc_funk_key(acct);
+  return fd_funk_rec_query_xid_safe(ctx->funk, &recid, xid, valloc, result_len);
+}
+
 fd_epoch_bank_t *
 read_epoch_bank( fd_rpc_ctx_t * ctx, fd_valloc_t valloc ) {
   fd_funk_rec_key_t recid = fd_runtime_epoch_bank_key();
@@ -1877,6 +1883,86 @@ ws_method_accountSubscribe(fd_websocket_ctx_t * wsctx, struct json_values * valu
   return 1;
 }
 
+static int
+  ws_method_accountSubscribe_update(fd_rpc_ctx_t * ctx, fd_replay_notif_msg_t * msg, struct fd_ws_subscription * sub, fd_textstream_t * ts) {
+  FD_METHOD_SCRATCH_BEGIN( 11<<20 ) {
+    fd_websocket_ctx_t * wsctx = sub->socket;
+
+    ulong val_sz;
+    void * val = read_account_with_xid(ctx, &sub->acct_subscribe.acct, &msg->acct_saved.funk_xid, fd_scratch_virtual(), &val_sz);
+    if (val == NULL) {
+      fd_textstream_sprintf(ts, "{\"jsonrpc\":\"2.0\",\"result\":{\"context\":{\"apiVersion\":\"" API_VERSION "\",\"slot\":%lu},\"value\":null},\"id\":%lu}" CRLF,
+                            ctx->blockstore->smr, sub->call_id);
+      return 1;
+    }
+
+    fd_account_meta_t * metadata = (fd_account_meta_t *)val;
+    if (val_sz < metadata->hlen) {
+      fd_web_ws_error(wsctx, "failed to load account data");
+      return 0;
+    }
+    val = (char*)val + metadata->hlen;
+    val_sz = val_sz - metadata->hlen;
+    if (val_sz > metadata->dlen)
+      val_sz = metadata->dlen;
+
+    if (sub->acct_subscribe.len != FD_LONG_UNSET && sub->acct_subscribe.off != FD_LONG_UNSET) {
+      if (sub->acct_subscribe.enc == FD_ENC_JSON) {
+        fd_web_ws_error(wsctx, "cannot use jsonParsed encoding with slice");
+        return 0;
+      }
+      long len = sub->acct_subscribe.len;
+      long off = sub->acct_subscribe.off;
+      if (off < 0 || (ulong)off >= val_sz) {
+        val = NULL;
+        val_sz = 0;
+      } else {
+        val = (char*)val + (ulong)off;
+        val_sz = val_sz - (ulong)off;
+      }
+      if (len < 0) {
+        val = NULL;
+        val_sz = 0;
+      } else if ((ulong)len < val_sz)
+        val_sz = (ulong)len;
+    }
+
+    fd_textstream_sprintf(ts, "{\"jsonrpc\":\"2.0\",\"result\":{\"context\":{\"apiVersion\":\"" API_VERSION "\",\"slot\":%lu},\"value\":{\"data\":[\"",
+                          ctx->blockstore->smr);
+
+    if (val_sz) {
+      switch (sub->acct_subscribe.enc) {
+      case FD_ENC_BASE58:
+        if (fd_textstream_encode_base58(ts, val, val_sz)) {
+          fd_web_ws_error(wsctx, "failed to encode data in base58");
+          return 0;
+        }
+        break;
+      case FD_ENC_BASE64:
+        if (fd_textstream_encode_base64(ts, val, val_sz)) {
+          fd_web_ws_error(wsctx, "failed to encode data in base64");
+          return 0;
+        }
+        break;
+      default:
+        break;
+      }
+    }
+
+    char owner[50];
+    fd_base58_encode_32((uchar*)metadata->info.owner, 0, owner);
+    fd_textstream_sprintf(ts, "\"],\"executable\":%s,\"lamports\":%lu,\"owner\":\"%s\",\"rentEpoch\":%lu,\"space\":%lu}},\"id\":%lu}" CRLF,
+                          (metadata->info.executable ? "true" : "false"),
+                          metadata->info.lamports,
+                          owner,
+                          metadata->info.rent_epoch,
+                          val_sz,
+                          sub->call_id);
+  } FD_METHOD_SCRATCH_END;
+
+  return 1;
+}
+
 int
 fd_webserver_ws_subscribe(struct json_values* values, fd_websocket_ctx_t * wsctx, void * cb_arg) {
   fd_rpc_ctx_t ctx = *( fd_rpc_ctx_t *)cb_arg;
@@ -1977,6 +2063,35 @@ fd_webserver_ws_closed(fd_websocket_ctx_t * wsctx, void * cb_arg) {
       fd_memcpy( &subs->list[i], &subs->list[--(subs->cnt)], sizeof(struct fd_ws_subscription) );
       --i;
     }
+  }
+  fd_ws_subs_unlock( subs );
+}
+
+void
+fd_rpc_replay_notify(fd_rpc_ctx_t * ctx, fd_replay_notif_msg_t * msg) {
+  struct fd_ws_sub_list * subs = ctx->subs;
+  fd_ws_subs_lock( subs );
+  if( subs->cnt == 0 ) {
+    /* do nothing */
+  } else if( msg->type == FD_REPLAY_SAVED_TYPE ) {
+    fd_textstream_t ts;
+    fd_textstream_new(&ts, fd_libc_alloc_virtual(), 11UL<<21);
+
+    /* TODO: replace with a hash table lookup? */
+    for( uint i = 0; i < msg->acct_saved.acct_id_cnt; ++i ) {
+      fd_pubkey_t * id = &msg->acct_saved.acct_id[i];
+      for( ulong j = 0; j < subs->cnt; ++j ) {
+        struct fd_ws_subscription * sub = &ctx->subs->list[ j ];
+        if( sub->meth_id == KEYW_WS_METHOD_ACCOUNTSUBSCRIBE &&
+            fd_pubkey_eq( id, &sub->acct_subscribe.acct ) ) {
+          fd_textstream_clear( &ts );
+          if( ws_method_accountSubscribe_update( ctx, msg, sub, &ts ) )
+            fd_web_ws_reply( sub->socket, &ts );
+        }
+      }
+    }
+
+    fd_textstream_destroy(&ts);
   }
   fd_ws_subs_unlock( subs );
 }

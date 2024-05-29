@@ -5,7 +5,6 @@
 #include "../../util/wksp/fd_wksp_private.h"
 #include "../../disco/topo/fd_topo.h"
 #include "fd_rpc_service.h"
-#include "../fdctl/run/tiles/fd_replay_notif.h"
 
 /*
 static void usage( char const * progname ) {
@@ -128,7 +127,7 @@ int main( int argc, char ** argv ) {
         continue;
       }
 
-      FD_LOG_NOTICE(("replay_notif: seq=%lu cnt=%u slot=%lu", seq_found, msg.acct_saved.acct_id_cnt, msg.acct_saved.funk_xid.ul[0]));
+      fd_rpc_replay_notify( ctx, &msg );
 
       ++seq_expect;
     }
