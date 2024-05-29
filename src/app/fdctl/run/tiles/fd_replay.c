@@ -124,7 +124,7 @@ scratch_align( void ) {
 
 FD_FN_PURE static inline ulong
 loose_footprint( fd_topo_tile_t const * tile FD_PARAM_UNUSED ) {
-  return 16UL * FD_SHMEM_GIGANTIC_PAGE_SZ;
+  return 32UL * FD_SHMEM_GIGANTIC_PAGE_SZ;
 }
 
 FD_FN_PURE static inline ulong
@@ -382,7 +382,34 @@ read_snapshot( void * _ctx, char const * snapshotfile, char const * incremental 
 
   const char * snapshot = snapshotfile;
 
+  char incremental_snapshot_out[128] = { 0 };
   if ( strncmp(snapshot, "wksp:", 5) == 0 ) {
+
+    if( strstr( incremental, "http" ) ) {
+      // while( ULONG_MAX == fd_fseq_query( ctx->first_turbine ) ) {}
+      FD_LOG_NOTICE( ( "downloading incremental snapshot..." ) );
+      FILE * fp;
+
+      /* Open the command for reading. */
+      char cmd[128];
+      snprintf( cmd, sizeof( cmd ), "./shenanigans.sh %s", incremental );
+      FD_LOG_NOTICE( ( "cmd: %s", cmd ) );
+      fp = popen( cmd, "r" );
+      if( fp == NULL ) {
+        printf( "Failed to run command\n" );
+        exit( 1 );
+      }
+
+      /* Read the output a line at a time - output it. */
+      if( !fgets( incremental_snapshot_out, sizeof( incremental_snapshot_out ) - 1, fp ) ) {
+        FD_LOG_NOTICE(("incremental snapshot %s", incremental_snapshot_out));
+        FD_LOG_ERR( ( "failed to parse snapshot name" ) );
+      }
+      incremental_snapshot_out[strcspn( incremental_snapshot_out, "\n" )] = '\0';
+      incremental = incremental_snapshot_out;
+      pclose( fp );
+    }
+
     /* Already loaded the main snapshot when we initialized funk */
     if ( strlen(incremental) > 0 ) {
       ctx->epoch_ctx = fd_exec_epoch_ctx_join( fd_exec_epoch_ctx_new( ctx->epoch_ctx_mem, 2000000UL ) );
