@@ -105,14 +105,14 @@ fd_feature_id_t const ids[] = {{""",
 FD_FN_CONST fd_feature_id_t const *
 fd_feature_id_query( ulong prefix ) {{
 
-  switch( prefix ) {{
-{
-    chr(0xa).join([
-    f'''  case {"0x%016x" % struct.unpack("<Q", fd58.dec32(x["pubkey"].encode('ascii'))[:8])}: return &ids[{"% 4d" % (i)} ];'''
-    for i, x in enumerate(fm)
-    ])
-}
-  default: break;
+  switch( prefix ) {{""",
+        file=body)
+    for i, x in enumerate(fm):
+        print(f'''  case {"0x%016x" % struct.unpack("<Q", fd58.dec32(x["pubkey"].encode('ascii'))[:8])}: return &ids[{"% 4d" % (i)} ];''',  file=body)
+        if "old" in x:
+            print(f'''  case {"0x%016x" % struct.unpack("<Q", fd58.dec32(x["old"].encode('ascii'))[:8])}: return &ids[{"% 4d" % (i)} ];''',  file=body)
+    print(
+        f"""  default: break;
   }}
 
   return NULL;
