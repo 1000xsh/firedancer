@@ -643,8 +643,13 @@ process_loader_upgradeable_instruction( fd_exec_instr_ctx_t * instr_ctx ) {
     fd_native_cpi_create_account_meta( programdata_key, 1U, 1U, &acct_metas[ 1UL ] );
     fd_native_cpi_create_account_meta( buffer_key,      0U, 1U, &acct_metas[ 2UL ] );
 
+    /* caller_program_id == program_id */
     fd_pubkey_t signers[ 1UL ];
-    signers[ 0UL ] = *programdata_key;
+    err = fd_pubkey_derive_pda( program_id, 1UL, seeds, &bump_seed, signers );
+    if( FD_UNLIKELY( err ) ) {
+      return err;
+    }
+
     err = fd_native_cpi_execute_system_program_instruction( instr_ctx, &instr, acct_metas, 3UL, signers, 1UL );
     if( FD_UNLIKELY( err ) ) {
       return err;
@@ -933,10 +938,10 @@ process_loader_upgradeable_instruction( fd_exec_instr_ctx_t * instr_ctx ) {
       FD_LOG_WARNING(( "Failed checked add to update spill account balance" ));
       return err;
     }
-    spill->meta->info.lamports  = result;
-    buffer->meta->info.lamports = 0UL;
+    spill->meta->info.lamports       = result;
+    buffer->meta->info.lamports      = 0UL;
     programdata->meta->info.lamports = programdata_balance_required;
-    buffer->meta->dlen = PROGRAMDATA_METADATA_SIZE; /* UpgradeableLoaderState::size_of_buffer(0) */
+    buffer->meta->dlen               = PROGRAMDATA_METADATA_SIZE; /* UpgradeableLoaderState::size_of_buffer(0) */
   /* https://github.com/anza-xyz/agave/blob/574bae8fefc0ed256b55340b9d87b7689bcdf222/programs/bpf_loader/src/lib.rs#L893-L957 */
   } else if( fd_bpf_upgradeable_loader_program_instruction_is_set_authority( &instruction ) ) {
     if( FD_UNLIKELY( instr_ctx->instr->acct_cnt<2U ) ) {
