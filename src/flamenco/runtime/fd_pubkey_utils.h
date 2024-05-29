@@ -38,14 +38,16 @@ fd_pubkey_derive_pda( fd_pubkey_t const * program_id,
    fd_vm_syscall_sol_try_find_program_address and creates a valid
    program derived address searching for a valid ed25519 curve point by
    iterating through 255 possible bump seeds. If any of the possible addresses
-   are on the curve then we know that it is not a valid PDA. 
+   are on the curve then we know that it is not a valid PDA. This also returns
+   the bump seed along with the program derived address.
    TODO: Potentially replace with shared function in fd_vm_syscall_pda.c */
 
 int
 fd_pubkey_try_find_program_address( fd_pubkey_t const * program_id, 
                                     ulong               seeds_cnt, 
                                     uchar **            seeds,
-                                    fd_pubkey_t *       out );
+                                    fd_pubkey_t *       out,
+                                    uchar *             out_bump_seed );
 
 
 FD_PROTOTYPES_END

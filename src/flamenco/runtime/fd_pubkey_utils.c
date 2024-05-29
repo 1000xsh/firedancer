@@ -81,16 +81,18 @@ int
 fd_pubkey_try_find_program_address( fd_pubkey_t const * program_id, 
                                     ulong               seeds_cnt, 
                                     uchar **            seeds, 
-                                    fd_pubkey_t *       out ) {
+                                    fd_pubkey_t *       out,
+                                    uchar *             out_bump_seed ) {
   uchar bump_seed[ 1UL ];
   for ( ulong i=0UL; i<256UL; ++i ) {
-    bump_seed[0] = (uchar)(255UL - i);
+    bump_seed[ 0UL ] = (uchar)(255UL - i);
 
     fd_pubkey_t derived[ 1UL ];
     int err = fd_pubkey_derive_pda( program_id, seeds_cnt, seeds, bump_seed, derived );
     if( err==FD_PUBKEY_SUCCESS ) {
       /* Stop looking if we have found a valid PDA */
       fd_memcpy( out, derived, sizeof(fd_pubkey_t) );
+      fd_memcpy( out_bump_seed, bump_seed, 1UL );
       break;
     } else if( err!=FD_PUBKEY_ERR_INVALID_SEEDS ) { 
       return err;
