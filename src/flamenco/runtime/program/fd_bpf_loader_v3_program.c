@@ -13,6 +13,9 @@
 #include "fd_bpf_program_util.h"
 #include "fd_native_cpi.h"
 
+#pragma GCC diagnostic ignored "-Wformat"
+#pragma GCC diagnostic ignored "-Wformat-extra-args"
+
 #include <stdlib.h>
  
 /* https://github.com/anza-xyz/agave/blob/77daab497df191ef485a7ad36ed291c1874596e5/programs/bpf_loader/src/lib.rs#L67-L69 */
@@ -640,18 +643,9 @@ process_loader_upgradeable_instruction( fd_exec_instr_ctx_t * instr_ctx ) {
     fd_native_cpi_create_account_meta( programdata_key, 1U, 1U, &acct_metas[ 1UL ] );
     fd_native_cpi_create_account_meta( buffer_key,      0U, 1U, &acct_metas[ 2UL ] );
 
-    const fd_pubkey_t * caller_program_id = program_id;
-    uchar * signer_seeds[] = { (uchar *)new_program_id, &bump_seed };
-    ulong seeds_len = 2UL;
-    fd_pubkey_t signer[ 1UL ];
-
-    int err = fd_pubkey_derive_pda( caller_program_id, seeds_len, signer_seeds, NULL, signer );
-    if( FD_UNLIKELY( err ) ) {
-      return err;
-    }
-
-    err = fd_native_cpi_execute_system_program_instruction( instr_ctx, &instr, acct_metas, 
-                                                            3UL, signer, 1UL );
+    fd_pubkey_t signers[ 1UL ];
+    signers[ 0UL ] = *programdata_key;
+    err = fd_native_cpi_execute_system_program_instruction( instr_ctx, &instr, acct_metas, 3UL, signers, 1UL );
     if( FD_UNLIKELY( err ) ) {
       return err;
     }
