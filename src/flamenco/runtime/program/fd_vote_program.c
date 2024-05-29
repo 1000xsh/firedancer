@@ -1033,6 +1033,7 @@ check_update_vote_state_slots_are_valid( fd_vote_state_t *           vote_state,
     ctx->txn_ctx->custom_err = FD_VOTE_ERR_SLOTS_MISMATCH;
     return FD_EXECUTOR_INSTR_ERR_CUSTOM_ERR;
   }
+
   if( memcmp( &deq_fd_slot_hash_t_peek_index_const( slot_hashes->hashes, slot_hashes_index )->hash,
               proposed_hash,
               sizeof( fd_hash_t ) ) != 0 ) {
@@ -1390,35 +1391,6 @@ update_validator_identity( ulong                       vote_acct_idx,
   return set_vote_account_state( vote_acct_idx, vote_account, vote_state, ctx );
 }
 
-// https://github.com/firedancer-io/solana/blob/da470eef4652b3b22598a1f379cacfe82bd5928d/programs/vote/src/vote_state/mod.rs#L843
-static int
-update_commission( ulong                       vote_acct_idx,
-                   fd_borrowed_account_t *     vote_account,
-                   uchar                       commission,
-                   fd_pubkey_t const *         signers[static FD_TXN_SIG_MAX],
-                   fd_exec_instr_ctx_t const * ctx /* feature_set */ ) {
-  int rc;
-
-  fd_valloc_t scratch_valloc = fd_scratch_virtual();
-
-  // https://github.com/firedancer-io/solana/blob/da470eef4652b3b22598a1f379cacfe82bd5928d/programs/vote/src/vote_state/mod.rs#L959-L965
-  fd_vote_state_versioned_t vote_state_versioned;
-  rc = get_state( vote_account, scratch_valloc, &vote_state_versioned );
-  if( FD_UNLIKELY( rc ) ) return rc;
-  convert_to_current( &vote_state_versioned, scratch_valloc );
-  fd_vote_state_t * vote_state = &vote_state_versioned.inner.current;
-
-  // https://github.com/firedancer-io/solana/blob/da470eef4652b3b22598a1f379cacfe82bd5928d/programs/vote/src/vote_state/mod.rs#L832
-  rc = verify_authorized_signer( &vote_state->authorized_withdrawer, signers );
-  if( FD_UNLIKELY( rc ) ) return rc;
-
-  // https://github.com/firedancer-io/solana/blob/da470eef4652b3b22598a1f379cacfe82bd5928d/programs/vote/src/vote_state/mod.rs#L837
-  vote_state->commission = commission;
-
-  // https://github.com/firedancer-io/solana/blob/da470eef4652b3b22598a1f379cacfe82bd5928d/programs/vote/src/vote_state/mod.rs#L839
-  return set_vote_account_state( vote_acct_idx, vote_account, vote_state, ctx );
-}
-
 // https://github.com/firedancer-io/solana/blob/v1.17/programs/vote/src/vote_state/mod.rs#L874
 static int
 is_commission_update_allowed( ulong slot, fd_epoch_schedule_t const * epoch_schedule ) {
@@ -1430,6 +1402,50 @@ is_commission_update_allowed( ulong slot, fd_epoch_schedule_t const * epoch_sche
   } else {
     return 1;
   }
+}
+
+// https://github.com/anza-xyz/agave/blob/master/programs/vote/src/vote_state/mod.rs#L916
+static int
+update_commission( ulong                       vote_acct_idx,
+                   fd_borrowed_account_t *     vote_account,
+                   uchar                       commission,
+                   fd_pubkey_t const *         signers[static FD_TXN_SIG_MAX],
+                   fd_epoch_schedule_t const * epoch_schedule,
+                   fd_sol_sysvar_clock_t const * clock,
+                   fd_exec_instr_ctx_t const * ctx /* feature_set */ ) {
+  int rc;
+
+  fd_valloc_t scratch_valloc = fd_scratch_virtual();
+  // https://github.com/firedancer-io/solana/blob/da470eef4652b3b22598a1f379cacfe82bd5928d/programs/vote/src/vote_state/mod.rs#L959-L965
+  fd_vote_state_versioned_t vote_state_versioned;
+  rc = get_state( vote_account, scratch_valloc, &vote_state_versioned );
+  if( FD_UNLIKELY( rc ) ) return rc;
+  convert_to_current( &vote_state_versioned, scratch_valloc );
+  fd_vote_state_t * vote_state = &vote_state_versioned.inner.current;
+
+  // https://github.com/anza-xyz/agave/blob/master/programs/vote/src/vote_state/mod.rs#L927
+  int enforce_commission_update_rule = 1;
+  if (FD_FEATURE_ACTIVE( ctx->slot_ctx, allow_commission_decrease_at_any_time ))
+    enforce_commission_update_rule = commission > vote_state->commission;
+
+  // https://github.com/anza-xyz/agave/blob/master/programs/vote/src/vote_state/mod.rs#L940
+  if( FD_LIKELY( enforce_commission_update_rule && FD_FEATURE_ACTIVE( ctx->slot_ctx,
+        commission_updates_only_allowed_in_first_half_of_epoch ) ) ) {
+    if( FD_UNLIKELY( !is_commission_update_allowed( clock->slot, epoch_schedule ) ) ) {
+      ctx->txn_ctx->custom_err = FD_VOTE_ERR_COMMISSION_UPDATE_TOO_LATE;
+      return FD_EXECUTOR_INSTR_ERR_CUSTOM_ERR;
+    }
+  }
+
+  // https://github.com/firedancer-io/solana/blob/da470eef4652b3b22598a1f379cacfe82bd5928d/programs/vote/src/vote_state/mod.rs#L832
+  rc = verify_authorized_signer( &vote_state->authorized_withdrawer, signers );
+  if( FD_UNLIKELY( rc ) ) return rc;
+
+  // https://github.com/firedancer-io/solana/blob/da470eef4652b3b22598a1f379cacfe82bd5928d/programs/vote/src/vote_state/mod.rs#L837
+  vote_state->commission = commission;
+
+  // https://github.com/firedancer-io/solana/blob/da470eef4652b3b22598a1f379cacfe82bd5928d/programs/vote/src/vote_state/mod.rs#L839
+  return set_vote_account_state( vote_acct_idx, vote_account, vote_state, ctx );
 }
 
 // https://github.com/firedancer-io/solana/blob/da470eef4652b3b22598a1f379cacfe82bd5928d/programs/vote/src/vote_state/mod.rs#L889
@@ -1767,18 +1783,40 @@ process_vote_state_update( ulong                         vote_acct_idx,
 
   rc = do_process_vote_state_update(
       &vote_state, slot_hashes, clock->epoch, clock->slot, vote_state_update, ctx );
-  if( FD_UNLIKELY( rc ) ) return rc;
+  if( FD_UNLIKELY( rc ) ) {
+    return rc;
+  }
 
+  /* Save latest vote for insertion on success. */
+  fd_landed_vote_t * latest_landed_vote = deq_fd_landed_vote_t_peek_tail( vote_state.votes );
+  fd_latest_vote_t   latest_vote = {0};
+  fd_latest_vote_t * new_latest_vote = NULL;
+  if( FD_LIKELY( latest_landed_vote ) ) {
+    latest_vote.node_pubkey = *vote_account->pubkey;
+    latest_vote.slot_hash   = (fd_slot_hash_t){ .slot = latest_landed_vote->lockout.slot, .hash = vote_state_update->hash };
+    new_latest_vote = &latest_vote;
+  }
+
+  /* Destroys vote_state. */
   rc = set_vote_account_state( vote_acct_idx, vote_account, &vote_state, ctx );
 
   /* only when running live or sim (vs. offline backtest) */
   if( FD_LIKELY( rc == FD_EXECUTOR_INSTR_SUCCESS && ctx->slot_ctx->latest_votes ) ) {
-    fd_landed_vote_t * latest_landed_vote = deq_fd_landed_vote_t_peek_tail( vote_state.votes );
-    fd_latest_vote_t    latest_vote         = {
-                   .node_pubkey = *vote_account->pubkey,
-                   .slot_hash   = { .slot = latest_landed_vote->lockout.slot, .hash = vote_state_update->hash }
-    };
-    fd_latest_vote_deque_push_tail( ctx->slot_ctx->latest_votes, latest_vote );
+    fd_bank_hash_cmp_t * bank_hash_cmp = fd_exec_epoch_ctx_bank_hash_cmp( ctx->slot_ctx->epoch_ctx );
+    if( FD_LIKELY( new_latest_vote ) ) {
+      fd_latest_vote_deque_push_tail( ctx->slot_ctx->latest_votes, latest_vote );
+
+      fd_bank_hash_cmp_lock( bank_hash_cmp );
+      fd_bank_hash_cmp_insert( bank_hash_cmp, latest_landed_vote->lockout.slot, &vote_state_update->hash, 0 );
+      fd_bank_hash_cmp_unlock( bank_hash_cmp );
+    }
+
+    if( FD_LIKELY( vote_state_update->has_root ) ) {
+      fd_bank_hash_cmp_entry_t * entry = fd_bank_hash_cmp_map_query( bank_hash_cmp->map, vote_state_update->root, NULL );
+      if( entry ) {
+        entry->rooted = 1; 
+      }
+    }
   }
 
   return rc;
@@ -2345,6 +2383,7 @@ fd_vote_program_execute( fd_exec_instr_ctx_t ctx ) {
   }
 
   case fd_vote_instruction_enum_update_commission: {
+
     fd_epoch_schedule_t const * epoch_schedule = fd_sysvar_cache_epoch_schedule( ctx.slot_ctx->sysvar_cache );
     if( FD_UNLIKELY( !epoch_schedule ) )
       return FD_EXECUTOR_INSTR_ERR_UNSUPPORTED_SYSVAR;
@@ -2352,17 +2391,8 @@ fd_vote_program_execute( fd_exec_instr_ctx_t ctx ) {
     if( FD_UNLIKELY( !clock ) )
       return FD_EXECUTOR_INSTR_ERR_UNSUPPORTED_SYSVAR;
 
-    // https://github.com/firedancer-io/solana/blob/da470eef4652b3b22598a1f379cacfe82bd5928d/programs/vote/src/vote_processor.rs#L150-L155
-    if( FD_LIKELY( FD_FEATURE_ACTIVE( ctx.slot_ctx,
-                                      commission_updates_only_allowed_in_first_half_of_epoch ) ) ) {
-      if( FD_UNLIKELY( !is_commission_update_allowed( clock->slot, epoch_schedule ) ) ) {
-        ctx.txn_ctx->custom_err = FD_VOTE_ERR_COMMISSION_UPDATE_TOO_LATE;
-        return FD_EXECUTOR_INSTR_ERR_CUSTOM_ERR;
-      }
-    }
-
-    // https://github.com/firedancer-io/solana/blob/da470eef4652b3b22598a1f379cacfe82bd5928d/programs/vote/src/vote_processor.rs#L157-L162
-    rc = update_commission( 0, me, instruction.inner.update_commission, signers, &ctx );
+    // https://github.com/anza-xyz/agave/blob/master/programs/vote/src/vote_processor.rs#L145
+    rc = update_commission( 0, me, instruction.inner.update_commission, signers, epoch_schedule, clock, &ctx );
 
     break;
   }

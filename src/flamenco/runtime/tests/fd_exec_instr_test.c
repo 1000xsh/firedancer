@@ -14,6 +14,7 @@
 #include "../../../funk/fd_funk.h"
 #include "../../../util/bits/fd_float.h"
 #include <assert.h>
+#include "../sysvar/fd_sysvar_cache.h"
 
 #pragma GCC diagnostic ignored "-Wformat-extra-args"
 
@@ -154,36 +155,11 @@ _load_account( fd_borrowed_account_t *           acc,
   return 1;
 }
 
-/* Loads sysvars if they don't exist already */
-static void
-_load_sysvar( fd_exec_txn_ctx_t * txn_ctx,
-              fd_pubkey_t         sysvar_pubkey,
-              uchar             * sysvar_raw_data,
-              ulong               data_size ) {
-  FD_BORROWED_ACCOUNT_DECL(borrowed_account);
-
-  pb_bytes_array_t * data = fd_scratch_alloc(alignof(pb_bytes_array_t), PB_BYTES_ARRAY_T_ALLOCSIZE(data_size));
-  data->size = (pb_size_t) data_size;
-  memcpy( data->bytes, sysvar_raw_data, data_size );
-
-  fd_exec_test_acct_state_t acct_state = {0};
-  acct_state.lamports   = 1;
-  acct_state.data       = data;
-  acct_state.executable = 1;
-  acct_state.rent_epoch = 0;
-  acct_state.has_address = true;
-  acct_state.has_owner = true;
-  memcpy( acct_state.address, &sysvar_pubkey, sizeof(fd_pubkey_t) );
-  memcpy( acct_state.owner, &fd_sysvar_owner_id, sizeof(fd_pubkey_t) );
-
-  _load_account( borrowed_account, txn_ctx->acc_mgr, txn_ctx->funk_txn, &acct_state );
-}
-
 static int
 _context_create( fd_exec_instr_test_runner_t *        runner,
                  fd_exec_instr_ctx_t *                ctx,
-                 fd_exec_test_instr_context_t const * test_ctx,
-                 fd_wksp_t *                          wksp) {
+                 fd_exec_test_instr_context_t const * test_ctx ) {
+  // TODO: Add an option to use workspace allocators
 
   memset( ctx, 0, sizeof(fd_exec_instr_ctx_t) );
 
@@ -206,23 +182,21 @@ _context_create( fd_exec_instr_test_runner_t *        runner,
 
   ulong vote_acct_max = 128UL;
 
-  fd_alloc_t * alloc = fd_alloc_join( fd_alloc_new( fd_wksp_alloc_laddr( wksp, fd_alloc_align(), fd_alloc_footprint(), 4 ), 4 ), 0 );
-
   /* Allocate contexts */
   uchar *               epoch_ctx_mem = fd_scratch_alloc( fd_exec_epoch_ctx_align(), fd_exec_epoch_ctx_footprint( vote_acct_max ) );
   uchar *               slot_ctx_mem  = fd_scratch_alloc( FD_EXEC_SLOT_CTX_ALIGN,  FD_EXEC_SLOT_CTX_FOOTPRINT  );
   uchar *               txn_ctx_mem   = fd_scratch_alloc( FD_EXEC_TXN_CTX_ALIGN,   FD_EXEC_TXN_CTX_FOOTPRINT   );
 
   fd_exec_epoch_ctx_t * epoch_ctx     = fd_exec_epoch_ctx_join( fd_exec_epoch_ctx_new( epoch_ctx_mem, vote_acct_max ) );
-  fd_exec_slot_ctx_t *  slot_ctx      = fd_exec_slot_ctx_join ( fd_exec_slot_ctx_new ( slot_ctx_mem, fd_alloc_virtual( alloc ) ) );
+  fd_exec_slot_ctx_t *  slot_ctx      = fd_exec_slot_ctx_join ( fd_exec_slot_ctx_new ( slot_ctx_mem, fd_libc_alloc_virtual() ) );
   fd_exec_txn_ctx_t *   txn_ctx       = fd_exec_txn_ctx_join  ( fd_exec_txn_ctx_new  ( txn_ctx_mem   ) );
 
   assert( epoch_ctx );
   assert( slot_ctx  );
 
-  ctx->slot_ctx  = slot_ctx;
-  ctx->txn_ctx   = txn_ctx;
-  txn_ctx->valloc                  = fd_alloc_virtual( alloc );
+  ctx->slot_ctx   = slot_ctx;
+  ctx->txn_ctx    = txn_ctx;
+  txn_ctx->valloc = fd_libc_alloc_virtual();
 
   /* Initial variables */
   txn_ctx->loaded_accounts_data_size_limit = MAX_LOADED_ACCOUNTS_DATA_SIZE_BYTES;
@@ -365,55 +339,55 @@ _context_create( fd_exec_instr_test_runner_t *        runner,
   /* Add accounts to bpf program cache */
   fd_bpf_scan_and_create_bpf_program_cache_entry( slot_ctx, funk_txn );
 
+  /* Restore sysvar cache */
+  fd_sysvar_cache_restore( slot_ctx->sysvar_cache, acc_mgr, funk_txn );
+
   /* Fill missing sysvar cache values with defaults */
   /* We create mock accounts for each of the sysvars and hardcode the data fields before loading it into the account manager */
   /* We use Agave sysvar defaults for data field values */
-  fd_bincode_encode_ctx_t encode_ctx;
-  ulong sz = 128;
-  uchar enc[sz]; memset( enc, 0, sz );
 
   /* Clock */
   // https://github.com/firedancer-io/solfuzz-agave/blob/agave-v2.0/src/lib.rs#L466-L474
-  fd_sol_sysvar_clock_t sysvar_clock = {
-                                        .slot = 10,
-                                        .epoch_start_timestamp = 0,
-                                        .epoch = 0,
-                                        .leader_schedule_epoch = 0,
-                                        .unix_timestamp = 0
-                                      };
-  encode_ctx.data = enc;
-  encode_ctx.dataend = enc + sizeof(sysvar_clock);
-  fd_sol_sysvar_clock_encode( &sysvar_clock, &encode_ctx );
-  _load_sysvar( txn_ctx, fd_sysvar_clock_id, enc, sizeof(sysvar_clock) );
+  if( !slot_ctx->sysvar_cache->has_clock ) {
+    slot_ctx->sysvar_cache->has_clock = 1;
+    fd_sol_sysvar_clock_t sysvar_clock = {
+                                          .slot = 10,
+                                          .epoch_start_timestamp = 0,
+                                          .epoch = 0,
+                                          .leader_schedule_epoch = 0,
+                                          .unix_timestamp = 0
+                                        };
+    memcpy( slot_ctx->sysvar_cache->val_clock, &sysvar_clock, sizeof(fd_sol_sysvar_clock_t) );
+  }
 
   /* Epoch schedule */
   // https://github.com/firedancer-io/solfuzz-agave/blob/agave-v2.0/src/lib.rs#L476-L483
-  fd_epoch_schedule_t sysvar_epoch_schedule = {
-                                                .slots_per_epoch = 432000,
-                                                .leader_schedule_slot_offset = 432000,
-                                                .warmup = 1,
-                                                .first_normal_epoch = 14,
-                                                .first_normal_slot = 524256
-                                              };
-  encode_ctx.data = enc;
-  encode_ctx.dataend = enc + sizeof(sysvar_epoch_schedule);
-  fd_epoch_schedule_encode( &sysvar_epoch_schedule, &encode_ctx );
-  _load_sysvar( txn_ctx, fd_sysvar_epoch_schedule_id, enc, sizeof(sysvar_epoch_schedule) );
+  if ( !slot_ctx->sysvar_cache->has_epoch_schedule ) {
+    slot_ctx->sysvar_cache->has_epoch_schedule = 1;
+    fd_epoch_schedule_t sysvar_epoch_schedule = {
+                                                  .slots_per_epoch = 432000,
+                                                  .leader_schedule_slot_offset = 432000,
+                                                  .warmup = 1,
+                                                  .first_normal_epoch = 14,
+                                                  .first_normal_slot = 524256
+                                                };
+    memcpy( slot_ctx->sysvar_cache->val_epoch_schedule, &sysvar_epoch_schedule, sizeof(fd_epoch_schedule_t) );
+  }
 
   /* Rent */
   // https://github.com/firedancer-io/solfuzz-agave/blob/agave-v2.0/src/lib.rs#L487-L500
-  fd_rent_t sysvar_rent = {
-                            .lamports_per_uint8_year = 3480,
-                            .exemption_threshold = 2.0,
-                            .burn_percent = 50
-                          };
-  encode_ctx.data = enc;
-  encode_ctx.dataend = enc + sizeof(sysvar_rent);
-  fd_rent_encode( &sysvar_rent, &encode_ctx );
-  _load_sysvar( txn_ctx, fd_sysvar_rent_id, enc, sizeof(sysvar_rent) );
+  if ( !slot_ctx->sysvar_cache->has_rent ) {
+    slot_ctx->sysvar_cache->has_rent = 1;
+    fd_rent_t sysvar_rent = {
+                              .lamports_per_uint8_year = 3480,
+                              .exemption_threshold = 2.0,
+                              .burn_percent = 50
+                            };
+    memcpy( slot_ctx->sysvar_cache->val_rent, &sysvar_rent, sizeof(fd_rent_t) );
+  }
 
-  /* Restore sysvar cache */
-  fd_sysvar_cache_restore( slot_ctx->sysvar_cache, acc_mgr, funk_txn );
+  /* Set slot bank variables */
+  slot_ctx->slot_bank.slot = fd_sysvar_cache_clock( slot_ctx->sysvar_cache )->slot;
 
   /* Handle undefined behavior if sysvars are malicious (!!!) */
 
@@ -506,20 +480,17 @@ _context_create( fd_exec_instr_test_runner_t *        runner,
 
 static void
 _context_destroy( fd_exec_instr_test_runner_t * runner,
-                  fd_exec_instr_ctx_t *         ctx,
-                  fd_wksp_t *                   wksp) {
+                  fd_exec_instr_ctx_t *         ctx ) {
   if( !ctx ) return;
   fd_exec_slot_ctx_t *  slot_ctx  = ctx->slot_ctx;
   if( !slot_ctx ) return;
   fd_acc_mgr_t *        acc_mgr   = slot_ctx->acc_mgr;
   fd_funk_txn_t *       funk_txn  = slot_ctx->funk_txn;
 
-  fd_wksp_free_laddr( fd_alloc_delete( fd_alloc_leave( ctx->txn_ctx->valloc.self ) ) );
-  fd_exec_slot_ctx_delete ( fd_exec_slot_ctx_leave ( slot_ctx  ) );
+  fd_exec_slot_ctx_free( slot_ctx );
   fd_acc_mgr_delete( acc_mgr );
   fd_scratch_pop();
   fd_funk_txn_cancel( runner->funk, funk_txn, 1 );
-  fd_wksp_detach( wksp );
 
   ctx->slot_ctx = NULL;
 }
@@ -738,10 +709,9 @@ int
 fd_exec_instr_fixture_run( fd_exec_instr_test_runner_t *        runner,
                            fd_exec_test_instr_fixture_t const * test,
                            char const *                         log_name ) {
-  fd_wksp_t * wksp = fd_wksp_attach( "wksp" );
   fd_exec_instr_ctx_t ctx[1];
-  if( FD_UNLIKELY( !_context_create( runner, ctx, &test->input, wksp ) ) ) {
-    _context_destroy( runner, ctx, wksp );
+  if( FD_UNLIKELY( !_context_create( runner, ctx, &test->input ) ) ) {
+    _context_destroy( runner, ctx );
     return 0;
   }
 
@@ -768,7 +738,7 @@ fd_exec_instr_fixture_run( fd_exec_instr_test_runner_t *        runner,
     has_diff = diff.has_diff;
   } while(0);
 
-  _context_destroy( runner, ctx, wksp );
+  _context_destroy( runner, ctx );
   return !has_diff;
 }
 
@@ -780,10 +750,9 @@ fd_exec_instr_test_run( fd_exec_instr_test_runner_t *        runner,
                         ulong                                output_bufsz ) {
 
   /* Convert the Protobuf inputs to a fd_exec context */
-  fd_wksp_t * wksp = fd_wksp_attach( "wksp" );
   fd_exec_instr_ctx_t ctx[1];
-  if( !_context_create( runner, ctx, input, wksp ) ) {
-    _context_destroy( runner, ctx, wksp );
+  if( !_context_create( runner, ctx, input ) ) {
+    _context_destroy( runner, ctx );
     return 0UL;
   }
 
@@ -801,7 +770,7 @@ fd_exec_instr_test_run( fd_exec_instr_test_runner_t *        runner,
     FD_SCRATCH_ALLOC_APPEND( l, alignof(fd_exec_test_instr_effects_t),
                                 sizeof (fd_exec_test_instr_effects_t) );
   if( FD_UNLIKELY( _l > output_end ) ) {
-    _context_destroy( runner, ctx, wksp );
+    _context_destroy( runner, ctx );
     return 0UL;
   }
   fd_memset( effects, 0, sizeof(fd_exec_test_instr_effects_t) );
@@ -830,7 +799,7 @@ fd_exec_instr_test_run( fd_exec_instr_test_runner_t *        runner,
     FD_SCRATCH_ALLOC_APPEND( l, alignof(fd_exec_test_acct_state_t),
                                 sizeof (fd_exec_test_acct_state_t) * modified_acct_cnt );
   if( FD_UNLIKELY( _l > output_end ) ) {
-    _context_destroy( runner, ctx, wksp );
+    _context_destroy( runner, ctx );
     return 0;
   }
   effects->modified_accounts       = modified_accts;
@@ -859,7 +828,7 @@ fd_exec_instr_test_run( fd_exec_instr_test_runner_t *        runner,
       FD_SCRATCH_ALLOC_APPEND( l, alignof(pb_bytes_array_t),
                                   PB_BYTES_ARRAY_T_ALLOCSIZE( acc->const_meta->dlen ) );
     if( FD_UNLIKELY( _l > output_end ) ) {
-      _context_destroy( runner, ctx, wksp );
+      _context_destroy( runner, ctx );
       return 0UL;
     }
     out_acct->data->size = (pb_size_t)acc->const_meta->dlen;
@@ -886,7 +855,7 @@ fd_exec_instr_test_run( fd_exec_instr_test_runner_t *        runner,
   /* TODO verify that there are no outstanding funk records */
 
   ulong actual_end = FD_SCRATCH_ALLOC_FINI( l, 1UL );
-  _context_destroy( runner, ctx, wksp );
+  _context_destroy( runner, ctx );
 
   *output = effects;
   return actual_end - (ulong)output_buf;
