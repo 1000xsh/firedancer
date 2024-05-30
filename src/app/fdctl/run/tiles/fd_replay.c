@@ -227,6 +227,7 @@ after_frag( void *             _ctx,
       fork->slot_ctx.slot_bank.prev_slot = fork->slot_ctx.slot_bank.slot;
       fork->slot_ctx.slot_bank.slot      = ctx->curr_slot;
       fork->slot_ctx.latest_votes        = ctx->latest_votes;
+      fd_latest_vote_deque_remove_all( fork->slot_ctx.latest_votes );
       fd_funk_txn_xid_t xid;
 
       fd_memcpy(xid.uc, ctx->blockhash.uc, sizeof(fd_funk_txn_xid_t));
@@ -321,6 +322,10 @@ after_frag( void *             _ctx,
         FD_LOG_ERR( ( "invariant violation: child slot %lu was already in the frontier", ctx->curr_slot ) );
       }
       fd_fork_frontier_ele_insert( ctx->replay->forks->frontier, child, ctx->replay->forks->pool );
+
+      /* Consensus */
+
+      FD_LOG_NOTICE( ( "latest votes cnt %lu", fd_latest_vote_deque_cnt( ctx->latest_votes ) ) );
 
       /* Prepare bank for next execution. */
 
@@ -706,7 +711,6 @@ unprivileged_init( fd_topo_t *      topo,
   fd_fork_frontier_ele_insert( ctx->replay->forks->frontier, replay_slot, ctx->replay->forks->pool );
 
   ctx->latest_votes = fd_latest_vote_deque_join( fd_latest_vote_deque_new( latest_votes_mem ) );
-  ctx->slot_ctx->latest_votes = ctx->latest_votes;
 
   if( strlen(tile->replay.capture) > 0 ) {
     ctx->capture_ctx = fd_capture_ctx_new( capture_ctx_mem );

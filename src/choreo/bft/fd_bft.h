@@ -46,7 +46,7 @@ typedef struct fd_root_vote fd_root_vote_t;
 #define MAP_KEY_EQUAL_IS_SLOW 1
 #define MAP_KEY_HASH(key)     ((uint)(fd_hash(0UL,&key,sizeof(fd_pubkey_t))))
 #define MAP_MEMOIZE           1
-#define MAP_LG_SLOT_CNT       FD_LG_NODE_PUBKEY_MAX 
+#define MAP_LG_SLOT_CNT       16 
 #include "../../util/tmpl/fd_map.c"
 /* clang-format on */
 

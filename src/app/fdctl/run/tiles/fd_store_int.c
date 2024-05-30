@@ -100,6 +100,7 @@ struct fd_store_tile_ctx {
   fd_stake_ci_t * stake_ci;
 
   ulong blockstore_seed;
+
 };
 typedef struct fd_store_tile_ctx fd_store_tile_ctx_t;
 
@@ -327,13 +328,22 @@ fd_store_tile_slot_prepare( fd_store_tile_ctx_t * ctx,
       fd_runtime_block_prepare( block_data, block->data_sz, fd_scratch_virtual(), &block_info );
 
       FD_LOG_DEBUG(( "block prepared - slot: %lu", slot ));
-      FD_LOG_NOTICE(( "first turbine: %lu, current received turbine: %lu, behind: %lu current "
-                      "executed: %lu, caught up: %d",
-                      ctx->store->first_turbine_slot,
-                      ctx->store->curr_turbine_slot,
-                      ctx->store->curr_turbine_slot - slot,
-                      slot,
-                      slot > ctx->store->first_turbine_slot ) );
+      if( FD_UNLIKELY( slot > ctx->store->curr_turbine_slot ) ) {
+        FD_LOG_WARNING( ( "slot %lu is newer than turbine %lu? did we repair it?",
+                          slot,
+                          ctx->store->curr_turbine_slot ) );
+      } else {
+        long now = fd_log_wallclock();
+        if( FD_UNLIKELY( now - ctx->store->last_log > (long)5e9 ) ) {
+          FD_LOG_NOTICE( ( "\n[Live Summary]\nlast executed slot: %lu\ncurrent turbine slot: %lu\nfirst turbine slot: %lu\nbehind: %lu\nlive: %d",
+                           slot,
+                           ctx->store->curr_turbine_slot,
+                           ctx->store->first_turbine_slot,
+                           ctx->store->curr_turbine_slot - slot,
+                           ( ctx->store->curr_turbine_slot - slot ) < 5 ) );
+          ctx->store->last_log = now;
+        }
+      }
       fd_txn_p_t * txns = fd_type_pun( out_buf );
       ulong txn_cnt = fd_runtime_block_collect_txns( &block_info, txns );
 
