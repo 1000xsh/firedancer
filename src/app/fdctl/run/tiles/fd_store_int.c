@@ -334,8 +334,8 @@ fd_store_tile_slot_prepare( fd_store_tile_ctx_t * ctx,
                           ctx->store->curr_turbine_slot ) );
       } else {
         long now = fd_log_wallclock();
-        if( FD_UNLIKELY( now - ctx->store->last_log > (long)5e9 ) ) {
-          FD_LOG_NOTICE( ( "\n[Live Summary]\nlast executed slot: %lu\ncurrent turbine slot: %lu\nfirst turbine slot: %lu\nbehind: %lu\nlive: %d",
+        if( FD_UNLIKELY( now - ctx->store->last_log > (long)1e9 ) ) {
+          FD_LOG_NOTICE( ( "\n[Live]\nlast executed slot: %lu\ncurrent turbine slot: %lu\nfirst turbine slot: %lu\nbehind: %lu\nlive: %d",
                            slot,
                            ctx->store->curr_turbine_slot,
                            ctx->store->first_turbine_slot,
