@@ -416,16 +416,59 @@ read_snapshot( void * _ctx, char const * snapshotfile, char const * incremental 
     }
 
     /* Already loaded the main snapshot when we initialized funk */
-    if ( strlen(incremental) > 0 ) {
-      ctx->epoch_ctx = fd_exec_epoch_ctx_join( fd_exec_epoch_ctx_new( ctx->epoch_ctx_mem, 2000000UL ) );
-      fd_snapshot_load(incremental, ctx->slot_ctx, false, false, FD_SNAPSHOT_TYPE_INCREMENTAL );
-    } else {
-      fd_runtime_recover_banks( ctx->slot_ctx, 0 );
+    fd_runtime_recover_banks( ctx->slot_ctx, 0 );
+    fd_epoch_bank_t * epoch_bank = fd_exec_epoch_ctx_epoch_bank( ctx->slot_ctx->epoch_ctx );
+    if( strlen( incremental ) > 0 ) {
+      ulong i, j;
+      FD_TEST( sscanf( incremental, "incremental-snapshot-%lu-%lu", &i, &j ) == 2 );
+      FD_TEST( i == ctx->slot_ctx->slot_bank.slot );
+      FD_TEST( epoch_bank );
+      FD_TEST( fd_slot_to_epoch( &epoch_bank->epoch_schedule, i, NULL ) ==
+               fd_slot_to_epoch( &epoch_bank->epoch_schedule, j, NULL ) );
+      fd_snapshot_load( incremental, ctx->slot_ctx, false, false, FD_SNAPSHOT_TYPE_INCREMENTAL );
     }
 
   } else {
     fd_snapshot_load(snapshot, ctx->slot_ctx, false, false, FD_SNAPSHOT_TYPE_FULL );
     if ( strlen(incremental) > 0 ) {
+      if( strstr( incremental, "http" ) ) {
+        // while( ULONG_MAX == fd_fseq_query( ctx->first_turbine ) ) {}
+        FD_LOG_NOTICE( ( "downloading incremental snapshot..." ) );
+        FILE * fp;
+
+        /* Open the command for reading. */
+        char cmd[128];
+        snprintf( cmd, sizeof( cmd ), "./shenanigans.sh %s", incremental );
+        FD_LOG_NOTICE( ( "cmd: %s", cmd ) );
+        fp = popen( cmd, "r" );
+        if( fp == NULL ) {
+          printf( "Failed to run command\n" );
+          exit( 1 );
+        }
+
+        /* Read the output a line at a time - output it. */
+        if( !fgets( incremental_snapshot_out, sizeof( incremental_snapshot_out ) - 1, fp ) ) {
+          FD_LOG_NOTICE( ( "incremental snapshot %s", incremental_snapshot_out ) );
+          FD_LOG_ERR( ( "failed to parse snapshot name" ) );
+        }
+        incremental_snapshot_out[strcspn( incremental_snapshot_out, "\n" )] = '\0';
+        incremental = incremental_snapshot_out;
+        pclose( fp );
+      }
+
+      FD_LOG_NOTICE(("snapshot %s", incremental));
+      FD_LOG_NOTICE(("incremental snapshot %s", incremental));
+      ulong ii;
+      FD_TEST( sscanf( snapshot, "snapshot-%lu", &ii ) == 1 );
+      ulong i, j;
+      FD_TEST( sscanf( incremental, "incremental-snapshot-%lu-%lu", &i, &j ) == 2 );
+      FD_TEST( ii == i );
+
+      fd_epoch_bank_t * epoch_bank = fd_exec_epoch_ctx_epoch_bank( ctx->slot_ctx->epoch_ctx );
+      FD_TEST( epoch_bank );
+      FD_TEST( fd_slot_to_epoch( &epoch_bank->epoch_schedule, i, NULL ) ==
+               fd_slot_to_epoch( &epoch_bank->epoch_schedule, j, NULL ) );
+
       ctx->epoch_ctx = fd_exec_epoch_ctx_join( fd_exec_epoch_ctx_new( ctx->epoch_ctx_mem, 2000000UL ) );
       fd_snapshot_load(incremental, ctx->slot_ctx, false, false, FD_SNAPSHOT_TYPE_INCREMENTAL );
     }
