@@ -335,7 +335,7 @@ fd_store_tile_slot_prepare( fd_store_tile_ctx_t * ctx,
       } else {
         long now = fd_log_wallclock();
         if( FD_UNLIKELY( now - ctx->store->last_log > (long)1e9 ) ) {
-          FD_LOG_NOTICE( ( "\n[Live]\nlast executed slot: %lu\ncurrent turbine slot: %lu\nfirst turbine slot: %lu\nbehind: %lu\nlive: %d",
+          FD_LOG_NOTICE( ( "\n\n[Live]\nlast executed slot: %lu\ncurrent turbine slot: %lu\nfirst turbine slot: %lu\nbehind: %lu\nlive: %d\n",
                            slot,
                            ctx->store->curr_turbine_slot,
                            ctx->store->first_turbine_slot,

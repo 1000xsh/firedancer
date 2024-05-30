@@ -311,8 +311,8 @@ fd_hash_bank( fd_exec_slot_ctx_t * slot_ctx,
         slot_ctx->signature_cnt );
   }
 
-  FD_LOG_NOTICE( ( "\n[Execution]\nslot: %lu\nbank hash: %32J\nparent bank hash: "
-                   "%32J\naccounts_delta: %32J\nsignature_count: %ld\nlast_blockhash: %32J",
+  FD_LOG_NOTICE( ( "\n\n[Execution]\nslot: %lu\nbank hash: %32J\nparent bank hash: "
+                   "%32J\naccounts_delta: %32J\nsignature_count: %ld\nlast_blockhash: %32J\n",
                    slot_ctx->slot_bank.slot,
                    hash->hash,
                    slot_ctx->prev_banks_hash.hash,

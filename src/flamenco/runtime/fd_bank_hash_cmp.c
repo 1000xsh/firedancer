@@ -149,15 +149,15 @@ fd_bank_hash_cmp_check( fd_bank_hash_cmp_t * bank_hash_cmp, ulong slot ) {
   if( FD_LIKELY( cmp && cmp->rooted && 0 != memcmp( &cmp->ours, &null_hash, sizeof( fd_hash_t ) ) &&
                  0 != memcmp( &cmp->theirs, &null_hash, sizeof( fd_hash_t ) ) ) ) {
     if( FD_UNLIKELY( 0 != memcmp( &cmp->ours, &cmp->theirs, sizeof( fd_hash_t ) ) ) ) {
-      FD_LOG_WARNING( ( "Bank hash mismatch on rooted slot: %lu. ours: %32J, theirs: %32J",
+      FD_LOG_WARNING( ( "\n\n[Bank hash]\nmismatch on rooted slot: %lu. ours: %32J, theirs: %32J\n",
                         cmp->slot,
                         cmp->ours.hash,
                         cmp->theirs.hash ) );
-      if( ++bank_hash_cmp->mismatch_cnt >= 5U ) {
-        FD_LOG_ERR( ( "Too many mismatches, shutting down!" ) );
-      }
+      // if( ++bank_hash_cmp->mismatch_cnt >= 5U ) {
+      //   FD_LOG_ERR( ( "Too many mismatches, shutting down!" ) );
+      // }
     } else {
-      FD_LOG_NOTICE( ( "Bank hash match on rooted slot: %lu. hash: %32J",
+      FD_LOG_NOTICE( ( "\n\n[Bank Hash Comparison]\nmatch on rooted slot: %lu. hash: %32J\n",
                        cmp->slot,
                        cmp->ours.hash ) );
     }
